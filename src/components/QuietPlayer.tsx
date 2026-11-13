@@ -5,6 +5,7 @@ import { Track, Album, ThemeMode } from '../types';
 interface QuietPlayerProps {
   currentTrack: Track | null;
   currentAlbum: Album;
+  onOpenCover?: () => void;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -20,6 +21,7 @@ interface QuietPlayerProps {
 export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   currentTrack,
   currentAlbum,
+  onOpenCover,
   isPlaying,
   currentTime,
   duration,
@@ -49,7 +51,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
 
   return (
     <footer
-      className={`fixed bottom-0 left-0 right-0 z-40 px-6 md:px-12 py-3.5 select-none border-t transition-colors ${
+      className={`shrink-0 z-40 px-6 md:px-12 py-3.5 select-none border-t transition-colors ${
         isDark
           ? 'bg-[#0c0d10]/95 backdrop-blur-md border-[#1e2029] text-[#eae8e3]'
           : 'bg-[#ffffff]/95 backdrop-blur-md border-[#dedad0] text-[#18191e] shadow-lg'
@@ -59,7 +61,8 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
         {/* Left: Current Track Info - ENLARGED */}
         <div className="flex items-center space-x-4 w-full md:w-1/4 min-w-0">
           <div
-            className={`w-12 h-14 rounded-sm overflow-hidden bg-black border flex-shrink-0 shadow-sm ${
+            data-cover="player-cover"
+            className={`relative w-12 h-14 rounded-sm overflow-hidden bg-black border flex-shrink-0 shadow-sm ${
               isDark ? 'border-[#292b38]' : 'border-[#d4d0c5]'
             }`}
           >
@@ -68,6 +71,14 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
               alt={currentAlbum.title}
               className="w-full h-full object-cover object-center"
             />
+            {onOpenCover && (
+              <button
+                type="button"
+                aria-label={`翻开正在播放的《${currentAlbum.title}》`}
+                onClick={onOpenCover}
+                className="absolute inset-0 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#c5a059]"
+              />
+            )}
           </div>
           <div className="min-w-0">
             <h4

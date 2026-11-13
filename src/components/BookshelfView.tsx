@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React from 'react';
 import { Layers, Columns3, Compass, Sun, Moon } from 'lucide-react';
 import { ThreeDimensionalBook } from './ThreeDimensionalBook';
 import { Album, ShelfDisplayMode, ThemeMode } from '../types';
@@ -7,6 +6,8 @@ import { Album, ShelfDisplayMode, ThemeMode } from '../types';
 interface BookshelfViewProps {
   albums: Album[];
   theme: ThemeMode;
+  displayMode: ShelfDisplayMode;
+  onDisplayModeChange: (mode: ShelfDisplayMode) => void;
   onToggleTheme: () => void;
   onSelectAlbum: (album: Album) => void;
 }
@@ -14,17 +15,18 @@ interface BookshelfViewProps {
 export const BookshelfView: React.FC<BookshelfViewProps> = ({
   albums,
   theme,
+  displayMode,
+  onDisplayModeChange,
   onToggleTheme,
   onSelectAlbum
 }) => {
-  const [displayMode, setDisplayMode] = useState<ShelfDisplayMode>('shelf');
   const isDark = theme === 'dark';
 
   return (
     <div className="flex-1 flex flex-col justify-between px-6 md:px-14 lg:px-20 py-4 md:py-6 w-full max-w-7xl mx-auto select-none">
       {/* Top Architectural Gallery Header (No Sidebar!) */}
       <header
-        className={`flex items-center justify-between pb-4 border-b transition-colors ${
+        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b transition-colors ${
           isDark ? 'border-[#1f212a]' : 'border-[#dedad0]'
         }`}
       >
@@ -53,7 +55,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
         </div>
 
         {/* Right Controls: Theme Toggle & Display Mode Switcher */}
-        <div className="flex items-center space-x-3.5">
+        <div className="flex shrink-0 items-center space-x-3.5">
           {/* 黑白切换按钮 (Light / Dark Monochrome Toggle) */}
           <button
             onClick={onToggleTheme}
@@ -86,7 +88,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
             }`}
           >
             <button
-              onClick={() => setDisplayMode('shelf')}
+              onClick={() => onDisplayModeChange('shelf')}
               className={`flex items-center space-x-2 px-3.5 py-1.5 rounded transition-all cursor-pointer ${
                 displayMode === 'shelf'
                   ? isDark
@@ -101,7 +103,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
               <span>立架并列</span>
             </button>
             <button
-              onClick={() => setDisplayMode('stacked')}
+              onClick={() => onDisplayModeChange('stacked')}
               className={`flex items-center space-x-2 px-3.5 py-1.5 rounded transition-all cursor-pointer ${
                 displayMode === 'stacked'
                   ? isDark
@@ -130,37 +132,22 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
           }`}
         />
 
-        {displayMode === 'shelf' ? (
-          // ================= SHELF MODE (立架排列) =================
-          <div className="w-full flex items-end justify-center gap-10 md:gap-16 lg:gap-20 px-4 pb-2 z-10 overflow-x-auto no-scrollbar">
-            {albums.map((album, idx) => (
-              <ThreeDimensionalBook
-                key={album.id}
-                album={album}
-                theme={theme}
-                displayMode="shelf"
-                stackIndex={idx}
-                totalStacked={albums.length}
-                onClick={() => onSelectAlbum(album)}
-              />
-            ))}
-          </div>
-        ) : (
-          // ================= STACKED MODE (画册叠放 & 悬浮扇形散开) =================
-          <div className="relative flex items-center justify-center w-full py-20 z-10">
-            {albums.map((album, idx) => (
-              <ThreeDimensionalBook
-                key={album.id}
-                album={album}
-                theme={theme}
-                displayMode="stacked"
-                stackIndex={idx}
-                totalStacked={albums.length}
-                onClick={() => onSelectAlbum(album)}
-              />
-            ))}
-          </div>
-        )}
+        <div data-shelf-scroll={displayMode === 'shelf' ? '' : undefined} className={displayMode === 'shelf'
+          ? 'shelf-row w-full flex items-end gap-6 sm:gap-10 lg:gap-14 px-4 pt-8 pb-2 z-10 overflow-x-auto no-scrollbar'
+          : 'relative grid place-content-center w-full py-10 z-10'
+        }>
+          {albums.map((album, idx) => (
+            <ThreeDimensionalBook
+              key={album.id}
+              album={album}
+              theme={theme}
+              displayMode={displayMode}
+              stackIndex={idx}
+              totalStacked={albums.length}
+              onOpen={() => onSelectAlbum(album)}
+            />
+          ))}
+        </div>
 
         {/* Solid Architectural Shelf Beam Plinth */}
         {displayMode === 'shelf' && (

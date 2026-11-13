@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import { useReducedMotion } from 'framer-motion';
 import { LOCAL_ARCHIVE } from './data/vaultData';
-import { Album, Track, ViewMode, ThemeMode } from './types';
+import { Album, Track, ViewMode, ThemeMode, ShelfDisplayMode } from './types';
+import { moveCover } from './coverTransition';
 import { BookshelfView } from './components/BookshelfView';
 import { BookSpreadView } from './components/BookSpreadView';
 import { GalleryStageView } from './components/GalleryStageView';
@@ -10,7 +12,18 @@ export const App: React.FC = () => {
   const [albums] = useState<Album[]>(LOCAL_ARCHIVE);
   const [selectedAlbum, setSelectedAlbum] = useState<Album>(LOCAL_ARCHIVE[0]);
   const [currentView, setCurrentView] = useState<ViewMode>('shelf');
-  const [theme, setTheme] = useState<ThemeMode>('dark');
+  const [bookOpening, setBookOpening] = useState<'waiting' | 'opening' | null>(null);
+  const [shelfDisplayMode, setShelfDisplayMode] = useState<ShelfDisplayMode>('shelf');
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlTheme = params.get('theme');
+      if (urlTheme === 'light' || urlTheme === 'dark') return urlTheme;
+      const saved = localStorage.getItem('arc_theme') as ThemeMode | null;
+      if (saved === 'light' || saved === 'dark') return saved;
+    }
+    return 'dark';
+  });
   const [currentTrack, setCurrentTrack] = useState<Track | null>(LOCAL_ARCHIVE[0].tracks[0]);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -18,9 +31,84 @@ export const App: React.FC = () => {
   const [volume, setVolume] = useState<number>(0.85);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const viewScroll = useRef({ shelf: 0, spread: 0, stage: 0 });
+  const shelfScroll = useRef(0);
+  const shelfEntry = useRef('');
+  const transitionDestination = useRef<ViewMode | null>(null);
+  const returnFromStageQueued = useRef(false);
+  const reduceMotion = useReducedMotion();
+  const playingAlbum = albums.find((album) => album.tracks.some((track) => track.id === currentTrack?.id)) ?? selectedAlbum;
+
+  useLayoutEffect(() => {
+    if (!mainRef.current) return;
+    mainRef.current.scrollTop = viewScroll.current[currentView];
+    const shelf = mainRef.current.querySelector('[data-shelf-scroll]');
+    if (shelf) shelf.scrollLeft = shelfScroll.current;
+  }, [currentView, shelfDisplayMode]);
+
+  const navigate = useCallback(async (to: ViewMode, fromCover: string, toCover: string, update?: () => void) => {
+    if (transitionDestination.current) return false;
+    transitionDestination.current = to;
+
+    const main = mainRef.current;
+    const from = main?.dataset.view as ViewMode | undefined;
+    if (main && from) viewScroll.current[from] = main.scrollTop;
+    const shelf = main?.querySelector('[data-shelf-scroll]');
+    if (shelf) shelfScroll.current = shelf.scrollLeft;
+
+    try {
+      await moveCover(fromCover, toCover, () => {
+        update?.();
+        setCurrentView(to);
+      }, !!reduceMotion);
+      return true;
+    } finally {
+      transitionDestination.current = null;
+    }
+  }, [reduceMotion]);
+
+  const openBook = async (album: Album, source = `shelf-${album.id}`) => {
+    const moved = await navigate('spread', source, 'folio-cover', () => {
+      shelfEntry.current = source;
+      viewScroll.current.spread = 0;
+      setSelectedAlbum(album);
+      setBookOpening('waiting');
+    });
+    if (moved) setBookOpening('opening');
+  };
+
+  const returnToShelf = useCallback(() => {
+    void navigate('shelf', 'folio-cover', shelfEntry.current);
+  }, [navigate]);
+
+  const returnToSpread = useCallback(() => {
+    if (transitionDestination.current === 'stage') {
+      returnFromStageQueued.current = true;
+      return;
+    }
+    void navigate('spread', 'stage-artwork', 'folio-artwork');
+  }, [navigate]);
+
+  const openStage = async () => {
+    const moved = await navigate('stage', 'folio-artwork', 'stage-artwork', () => {
+      viewScroll.current.stage = 0;
+      setBookOpening(null);
+    });
+    if (moved && returnFromStageQueued.current) {
+      returnFromStageQueued.current = false;
+      returnToSpread();
+    }
+  };
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      try {
+        localStorage.setItem('arc_theme', next);
+      } catch {}
+      return next;
+    });
   };
 
   const handlePlayTrack = (track: Track, album: Album = selectedAlbum) => {
@@ -83,30 +171,27 @@ export const App: React.FC = () => {
   // Keyboard shortcut (Space = Play/Pause, Esc = Back)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && currentView === 'stage' && !e.repeat && !document.fullscreenElement) {
+        returnToSpread();
+        return;
+      }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      if (e.code === 'Space') {
+      if (e.code === 'Space' && !(e.target instanceof HTMLElement && e.target.closest('button'))) {
         e.preventDefault();
         handleTogglePlay();
-      }
-      if (e.key === 'Escape') {
-        if (currentView === 'stage') {
-          setCurrentView('spread');
-        } else if (currentView === 'spread') {
-          setCurrentView('shelf');
-        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, currentView]);
+  }, [isPlaying, currentView, returnToSpread]);
 
   const isDark = theme === 'dark';
 
   return (
     <div
-      className={`h-screen w-full flex flex-col transition-colors duration-300 overflow-hidden ${
+      className={`h-dvh w-full flex flex-col transition-colors duration-300 overflow-hidden ${
         isDark
           ? 'paper-texture-dark bg-[#0d0e11] text-[#eae8e3]'
           : 'paper-texture-light bg-[#f7f5ef] text-[#18191e]'
@@ -128,16 +213,20 @@ export const App: React.FC = () => {
       />
 
       {/* Main Full-Width Viewport (No Sidebar! 100% Physical 3D Architecture) */}
-      <main className="flex-1 flex flex-col pb-20 overflow-hidden relative justify-center">
+      <main ref={mainRef} data-view={currentView} className="flex-1 min-h-0 flex flex-col relative overflow-x-hidden overflow-y-auto" key={currentView}>
         {currentView === 'shelf' && (
           <BookshelfView
             albums={albums}
             theme={theme}
-            onToggleTheme={toggleTheme}
-            onSelectAlbum={(alb) => {
-              setSelectedAlbum(alb);
-              setCurrentView('spread');
+            displayMode={shelfDisplayMode}
+            onDisplayModeChange={(mode) => {
+              const shelf = mainRef.current?.querySelector('[data-shelf-scroll]');
+              if (shelf) shelfScroll.current = shelf.scrollLeft;
+              viewScroll.current.shelf = mainRef.current?.scrollTop ?? 0;
+              setShelfDisplayMode(mode);
             }}
+            onToggleTheme={toggleTheme}
+            onSelectAlbum={openBook}
           />
         )}
 
@@ -147,10 +236,11 @@ export const App: React.FC = () => {
             currentTrack={currentTrack}
             isPlaying={isPlaying}
             theme={theme}
+            opening={bookOpening}
             onToggleTheme={toggleTheme}
             onPlayTrack={(t) => handlePlayTrack(t, selectedAlbum)}
-            onOpenStage={() => setCurrentView('stage')}
-            onBackToShelf={() => setCurrentView('shelf')}
+            onOpenStage={openStage}
+            onBackToShelf={returnToShelf}
           />
         )}
 
@@ -161,7 +251,7 @@ export const App: React.FC = () => {
             isPlaying={isPlaying}
             theme={theme}
             onToggleTheme={toggleTheme}
-            onBackToSpread={() => setCurrentView('spread')}
+            onBackToSpread={returnToSpread}
           />
         )}
       </main>
@@ -169,7 +259,8 @@ export const App: React.FC = () => {
       {/* Minimalist Floating Player */}
       <QuietPlayer
         currentTrack={currentTrack}
-        currentAlbum={selectedAlbum}
+        currentAlbum={playingAlbum}
+        onOpenCover={currentView === 'shelf' ? () => openBook(playingAlbum, 'player-cover') : undefined}
         isPlaying={isPlaying}
         currentTime={currentTime}
         duration={duration}

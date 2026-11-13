@@ -1,13 +1,17 @@
-import React, { useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Eye, Volume2, ArrowLeft, Disc, Sun, Moon, Play } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'framer-motion';
+import type { MotionStyle } from 'framer-motion';
+import { Eye, ArrowLeft, Disc, Sun, Moon, Play } from 'lucide-react';
 import { Album, Track, ThemeMode } from '../types';
+import { HardcoverArtwork } from './HardcoverArtwork';
+import { TurningLeaf } from './TurningLeaf';
 
 interface BookSpreadViewProps {
   album: Album;
   currentTrack: Track | null;
   isPlaying: boolean;
   theme: ThemeMode;
+  opening: 'waiting' | 'opening' | null;
   onToggleTheme: () => void;
   onPlayTrack: (track: Track) => void;
   onOpenStage: () => void;
@@ -19,30 +23,67 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
   currentTrack,
   isPlaying,
   theme,
+  opening,
   onToggleTheme,
   onPlayTrack,
   onOpenStage,
   onBackToShelf
 }) => {
   const isDark = theme === 'dark';
+  const reduceMotion = useReducedMotion();
+  const viewRef = useRef<HTMLDivElement>(null);
+  const [closing, setClosing] = useState(false);
+  const [opened, setOpened] = useState(!opening || !!reduceMotion);
+  const progress = useMotionValue(opening && !reduceMotion ? 0 : 1);
+  const coverAngle = useTransform(progress, [0, 0.18, 0.47, 0.75, 0.9, 1], ['180deg', '150deg', '55deg', '3deg', '-1.4deg', '0deg']);
+  const mobileCoverAngle = useTransform(progress, [0, 0.13, 0.47, 0.65, 1], ['0deg', '-13deg', '-89deg', '-115deg', '-115deg']);
+  const mobileCoverOpacity = useTransform(progress, [0.39, 0.59], [1, 0]);
+  const bookOffset = useTransform(progress, [0, 0.15, 0.82], ['-25%', '-23%', '0%']);
+  const bookTilt = useTransform(progress, [0, 0.22, 0.7, 1], ['7deg', '11deg', '4deg', '0deg']);
+  const pageVisibility = useTransform(progress, (position) => position > 0.03 ? 'visible' : 'hidden');
+  const readingOpacity = useTransform(progress, [0.2, 0.47], [0, 1]);
+  const leafShadow = useTransform(progress, [0, 0.16, 0.48, 0.74, 0.96], [0, 0.12, 0.84, 0.3, 0]);
+  const leftPageShadow = useTransform(progress, [0.52, 0.7, 0.88, 0.97], [0, 0.32, 0.48, 0]);
+  const shadowWidth = useTransform(progress, [0.16, 0.58, 0.96], [0.35, 1, 0.25]);
 
-  // Esc key listener to return to shelf
+  useEffect(() => {
+    if (opening === 'waiting') return;
+    const target = closing ? 0 : 1;
+    if (reduceMotion || progress.get() === target) {
+      progress.set(target);
+      if (closing) onBackToShelf();
+      else setOpened(true);
+      return;
+    }
+
+    const animation = animate(progress, target, {
+      duration: closing ? 0.64 * progress.get() : 0.86,
+      ease: [0.32, 0.12, 0.24, 1],
+      onComplete: closing ? onBackToShelf : () => setOpened(true)
+    });
+    return () => animation.stop();
+  }, [closing, onBackToShelf, opening, progress, reduceMotion]);
+
+  useEffect(() => {
+    if (closing) viewRef.current?.closest('main')?.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+  }, [closing, reduceMotion]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onBackToShelf();
+      if (e.key === 'Escape' && !e.repeat) {
+        setClosing(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onBackToShelf]);
+  }, []);
 
   // Check if current track belongs to this album
   const isCurrentAlbumActive = album.tracks.some((t) => t.id === currentTrack?.id);
   const isThisAlbumPlaying = isCurrentAlbumActive && isPlaying;
 
   return (
-    <div className="flex-1 flex flex-col justify-center px-4 sm:px-8 md:px-12 py-2 max-w-6xl mx-auto w-full select-none">
+    <div ref={viewRef} className="my-auto px-4 sm:px-8 md:px-12 pt-3 pb-7 max-w-6xl mx-auto w-full select-none">
       {/* Top Quiet Navigation & Controls Header - COMPACT */}
       <div
         className={`flex items-center justify-between mb-3 pb-2.5 border-b transition-colors ${
@@ -51,21 +92,22 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
       >
         {/* Back to Shelf Button */}
         <button
-          onClick={onBackToShelf}
-          className={`flex items-center space-x-2.5 text-sm md:text-base font-serif transition-colors cursor-pointer group ${
+          onClick={() => setClosing(true)}
+          className={`flex items-center gap-2.5 whitespace-nowrap text-sm md:text-base font-serif transition-colors cursor-pointer group ${
             isDark
               ? 'text-[#b0b3c6] hover:text-[#ffffff]'
               : 'text-[#383a48] hover:text-[#18191e]'
           }`}
         >
           <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-          <span>返回典藏书架 (Esc)</span>
+          <span className="hidden sm:inline">返回典藏书架 (Esc)</span>
+          <span className="sm:hidden">返回书架</span>
         </button>
 
         <div className="flex items-center space-x-3">
           {/* Catalog Seal */}
           <span
-            className={`text-xs font-mono font-medium tracking-wider px-2.5 py-1 rounded border ${
+            className={`hidden min-[430px]:inline whitespace-nowrap text-xs font-mono font-medium tracking-wider px-2.5 py-1 rounded border ${
               isDark
                 ? 'text-[#c5a059] border-[#c5a059]/30 bg-black/50'
                 : 'text-[#8a6a26] border-[#8a6a26]/30 bg-[#eae7de]'
@@ -100,6 +142,7 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
           {/* Exhibition Stage Button */}
           <button
             onClick={onOpenStage}
+            disabled={closing || !opened}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs md:text-sm font-serif border transition-all cursor-pointer ${
               isDark
                 ? 'bg-[#181a22] hover:bg-[#232634] text-[#c5a059] border-[#2e303d]'
@@ -107,152 +150,136 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            <span>纯享展台</span>
+            <span className="whitespace-nowrap">纯享展台</span>
           </button>
         </div>
       </div>
 
-      {/* ================= THE TWO-PAGE OPEN FOLIO SPREAD (PHYSICAL 3D UNROLL) ================= */}
-      <div
-        style={{ perspective: 2000 }}
-        className="w-full relative"
-      >
-        <div
-          className={`grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 rounded-lg p-4 md:p-6 lg:p-7 border relative overflow-hidden transition-colors ${
-            isDark
-              ? 'bg-[#121318] border-[#22242e] shadow-[0_25px_60px_rgba(0,0,0,0.85)]'
-              : 'bg-[#ffffff] border-[#ded9cd] shadow-[0_15px_45px_rgba(0,0,0,0.07)]'
-          }`}
+      <div className="folio-scene" data-theme={theme}>
+        <motion.div
+          className="folio"
+          style={{
+            '--folio-cover-angle': coverAngle,
+            '--folio-mobile-cover-angle': mobileCoverAngle,
+            '--folio-mobile-cover-opacity': mobileCoverOpacity,
+            '--folio-offset': bookOffset,
+            '--folio-tilt': bookTilt,
+            '--folio-page-visibility': pageVisibility,
+            '--folio-reading-opacity': readingOpacity
+          } as MotionStyle}
         >
-          {/* Center Spine Binding Gutter Seam */}
-          <div
-            className={`hidden lg:block absolute top-0 bottom-0 left-1/2 w-[2px] -ml-[1px] z-20 pointer-events-none ${
-              isDark
-                ? 'bg-gradient-to-b from-transparent via-[#2b2d3c] to-transparent shadow-[0_0_8px_rgba(0,0,0,0.9)]'
-                : 'bg-gradient-to-b from-transparent via-[#e4e0d4] to-transparent shadow-[0_0_6px_rgba(0,0,0,0.06)]'
-            }`}
-          />
+          <div className="folio-hinge">
+            <div className="folio-page folio-page--left flex flex-col items-center justify-center p-4 md:p-6">
+              {/* Vinyl Record that slides out smoothly when playing */}
+              <motion.div
+                initial={false}
+                animate={{
+                  x: isThisAlbumPlaying ? 55 : 0,
+                  rotate: isThisAlbumPlaying ? 360 : 0,
+                  opacity: isThisAlbumPlaying ? 0.95 : 0.25
+                }}
+                transition={{
+                  x: { type: 'spring', stiffness: 220, damping: 24 },
+                  rotate: {
+                    repeat: Infinity,
+                    duration: 18,
+                    ease: 'linear'
+                  },
+                  opacity: { duration: 0.3 }
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-40 h-40 md:w-48 md:h-48 rounded-full pointer-events-none z-0 hidden sm:flex items-center justify-center"
+                style={{
+                  background:
+                    'radial-gradient(circle, #1a1a1a 0%, #111111 40%, #080808 70%, #000000 100%)',
+                  boxShadow:
+                    '0 10px 25px rgba(0,0,0,0.85), inset 0 0 0 2px rgba(255,255,255,0.08)'
+                }}
+              >
+                {/* Vinyl sound groove rings */}
+                <div className="absolute inset-3 rounded-full border border-white/[0.04]" />
+                <div className="absolute inset-7 rounded-full border border-white/[0.04]" />
+                <div className="absolute inset-11 rounded-full border border-white/[0.04]" />
+                <div className="absolute inset-15 rounded-full border border-white/[0.04]" />
 
-          {/* ================= LEFT FOLIO: ARTWORK MOUNT & VINYL DISC ================= */}
-          <motion.div
-            initial={{ rotateY: 24, opacity: 0, x: -25 }}
-            animate={{ rotateY: 0, opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            style={{ transformOrigin: 'right center' }}
-            className={`lg:col-span-5 flex flex-col items-center justify-center p-4 md:p-6 rounded-sm border relative overflow-visible ${
-              isDark
-                ? 'bg-[#0b0c0f] border-[#1b1c24]'
-                : 'bg-[#f8f7f2] border-[#e8e4d8]'
-            }`}
-          >
-            {/* Vinyl Record that slides out smoothly when playing */}
-            <motion.div
-              initial={false}
-              animate={{
-                x: isThisAlbumPlaying ? 55 : 0,
-                rotate: isThisAlbumPlaying ? 360 : 0,
-                opacity: isThisAlbumPlaying ? 0.95 : 0.25
-              }}
-              transition={{
-                x: { type: 'spring', stiffness: 220, damping: 24 },
-                rotate: {
-                  repeat: Infinity,
-                  duration: 18,
-                  ease: 'linear'
-                },
-                opacity: { duration: 0.3 }
-              }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 w-40 h-40 md:w-48 md:h-48 rounded-full pointer-events-none z-0 hidden sm:flex items-center justify-center"
-              style={{
-                background:
-                  'radial-gradient(circle, #1a1a1a 0%, #111111 40%, #080808 70%, #000000 100%)',
-                boxShadow:
-                  '0 10px 25px rgba(0,0,0,0.85), inset 0 0 0 2px rgba(255,255,255,0.08)'
-              }}
-            >
-              {/* Vinyl sound groove rings */}
-              <div className="absolute inset-3 rounded-full border border-white/[0.04]" />
-              <div className="absolute inset-7 rounded-full border border-white/[0.04]" />
-              <div className="absolute inset-11 rounded-full border border-white/[0.04]" />
-              <div className="absolute inset-15 rounded-full border border-white/[0.04]" />
+                {/* Center Vinyl Label */}
+                <div
+                  className={`w-14 h-14 md:w-16 md:h-16 rounded-full border flex items-center justify-center shadow-inner overflow-hidden ${
+                    isDark
+                      ? 'bg-[#252733] border-[#c5a059]/40'
+                      : 'bg-[#e8e5dc] border-[#9e7d3b]/40'
+                  }`}
+                >
+                  <img
+                    src={album.artwork}
+                    alt={album.title}
+                    className="w-full h-full object-cover filter brightness-90"
+                  />
+                  <div className="absolute w-2.5 h-2.5 rounded-full bg-black border border-white/30" />
+                </div>
+              </motion.div>
 
-              {/* Center Vinyl Label */}
+              {/* Framed Artwork Plate - PERFECT PROPORTIONS */}
               <div
-                className={`w-14 h-14 md:w-16 md:h-16 rounded-full border flex items-center justify-center shadow-inner overflow-hidden ${
+                className={`p-3 md:p-3.5 border rounded-xs w-full transition-shadow relative z-10 ${
                   isDark
-                    ? 'bg-[#252733] border-[#c5a059]/40'
-                    : 'bg-[#e8e5dc] border-[#9e7d3b]/40'
+                    ? 'bg-[#14151b] border-[#252733] art-plate-shadow'
+                    : 'bg-[#ffffff] border-[#ded9cc] art-plate-shadow-light'
+                } ${
+                  album.aspectRatio === 'landscape'
+                    ? 'max-w-[460px]'
+                    : 'max-w-[280px] sm:max-w-[300px] md:max-w-[325px]'
                 }`}
               >
-                <img
-                  src={album.artwork}
-                  alt={album.title}
-                  className="w-full h-full object-cover filter brightness-90"
-                />
-                <div className="absolute w-2.5 h-2.5 rounded-full bg-black border border-white/30" />
-              </div>
-            </motion.div>
+                <button
+                  type="button"
+                  className={`relative block w-full overflow-hidden rounded-xs bg-black group cursor-pointer ${
+                    album.aspectRatio === 'landscape' ? 'aspect-video' : 'aspect-[3/4.25]'
+                  }`}
+                  onClick={onOpenStage}
+                  disabled={closing || !opened}
+                  aria-label={`在纯享展台查看《${album.title}》原画`}
+                  title="点击进入全屏纯享展台"
+                >
+                  <img
+                    data-cover="folio-artwork"
+                    src={album.artwork}
+                    alt={album.title}
+                    className="w-full h-full object-contain bg-black group-hover:scale-[1.02] transition-transform duration-500"
+                  />
 
-            {/* Framed Artwork Plate - PERFECT PROPORTIONS */}
-            <div
-              className={`p-3 md:p-3.5 border rounded-xs w-full transition-shadow relative z-10 ${
-                isDark
-                  ? 'bg-[#14151b] border-[#252733] art-plate-shadow'
-                  : 'bg-[#ffffff] border-[#ded9cc] art-plate-shadow-light'
-              } ${
-                album.aspectRatio === 'landscape'
-                  ? 'max-w-[460px]'
-                  : 'max-w-[280px] sm:max-w-[300px] md:max-w-[325px]'
-              }`}
-            >
-              <div
-                className={`relative overflow-hidden rounded-xs bg-black group cursor-pointer ${
-                  album.aspectRatio === 'landscape' ? 'aspect-video' : 'aspect-[3/4.25]'
-                }`}
-                onClick={onOpenStage}
-                title="点击进入全屏纯享展台"
-              >
-                <img
-                  src={album.artwork}
-                  alt={album.title}
-                  className="w-full h-full object-contain bg-black group-hover:scale-[1.02] transition-transform duration-500"
-                />
+                  {/* Subtle Hover Action Overlay */}
+                  <span aria-hidden="true" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-black/80 text-white text-xs font-serif backdrop-blur-sm border border-white/20 shadow-xl">
+                      <Eye className="w-3.5 h-3.5 text-[#c5a059]" />
+                      <span>放大展台</span>
+                    </span>
+                  </span>
+                </button>
 
-                {/* Subtle Hover Action Overlay */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-black/80 text-white text-xs font-serif backdrop-blur-sm border border-white/20 shadow-xl">
-                    <Eye className="w-3.5 h-3.5 text-[#c5a059]" />
-                    <span>放大展台</span>
+                {/* Museum Plate Caption */}
+                <div
+                  className={`mt-2.5 pt-2 border-t flex items-center justify-between text-xs font-mono ${
+                    isDark
+                      ? 'border-[#20222b] text-[#a0a2b5]'
+                      : 'border-[#eae6dc] text-[#555869]'
+                  }`}
+                >
+                  <span className="font-medium truncate mr-2">
+                    图版 I · 《{album.title}》原画特刊
+                  </span>
+                  <span className="flex-shrink-0 font-mono">
+                    {album.dimensions}
                   </span>
                 </div>
               </div>
-
-              {/* Museum Plate Caption */}
-              <div
-                className={`mt-2.5 pt-2 border-t flex items-center justify-between text-xs font-mono ${
-                  isDark
-                    ? 'border-[#20222b] text-[#a0a2b5]'
-                    : 'border-[#eae6dc] text-[#555869]'
-                }`}
-              >
-                <span className="font-medium truncate mr-2">
-                  图版 I · 《{album.title}》原画特刊
-                </span>
-                <span className="flex-shrink-0 font-mono">
-                  {album.dimensions}
-                </span>
-              </div>
+              <motion.div className="folio-turn-shadow folio-turn-shadow--left" style={{ opacity: leftPageShadow }} aria-hidden="true" />
             </div>
-          </motion.div>
+            <div className="folio-hardcover" data-cover="folio-cover" aria-hidden="true">
+              <HardcoverArtwork album={album} />
+            </div>
+          </div>
 
-          {/* ================= RIGHT FOLIO: COLOPHON & DYNAMIC TRACKLIST ================= */}
-          <motion.div
-            initial={{ rotateY: -24, opacity: 0, x: 25 }}
-            animate={{ rotateY: 0, opacity: 1, x: 0 }}
-            transition={{ duration: 0.55, delay: 0.03, ease: [0.16, 1, 0.3, 1] }}
-            style={{ transformOrigin: 'left center' }}
-            className="lg:col-span-7 flex flex-col justify-between space-y-3.5 lg:pl-4"
-          >
+          <div className="folio-page folio-page--right flex flex-col justify-between gap-3.5 p-4 md:p-6 lg:pl-9">
             {/* Header Titles - SCALED DOWN ONE NOTCH TO PREVENT OVERFLOW & MULTILINE */}
             <div className="space-y-1.5">
               <span
@@ -464,8 +491,10 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
                 </div>
               ))}
             </div>
-          </motion.div>
-        </div>
+            <motion.div className="folio-turn-shadow" style={{ opacity: leafShadow, scaleX: shadowWidth }} aria-hidden="true" />
+          </div>
+          {!reduceMotion && <TurningLeaf progress={progress} />}
+        </motion.div>
       </div>
     </div>
   );

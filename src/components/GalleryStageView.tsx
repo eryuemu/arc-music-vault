@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { ArrowLeft, Volume2, Disc, Sun, Moon, Film, Image as ImageIcon } from 'lucide-react';
 import { Album, Track, ThemeMode } from '../types';
 
@@ -24,28 +23,29 @@ export const GalleryStageView: React.FC<GalleryStageViewProps> = ({
   const isDark = theme === 'dark';
 
   return (
-    <div className="flex-1 flex flex-col justify-between items-center px-6 md:px-14 lg:px-20 py-8 max-w-7xl mx-auto w-full select-none animate-fadeIn">
+    <div className="flex-1 flex flex-col justify-between items-center px-6 md:px-14 lg:px-20 py-8 max-w-7xl mx-auto w-full select-none">
       {/* Top Quiet Back Navigation & Controls */}
       <div
-        className={`w-full flex items-center justify-between pb-5 border-b transition-colors ${
+        className={`w-full flex flex-wrap items-center justify-between gap-3 pb-5 border-b transition-colors ${
           isDark ? 'border-[#1f212a]' : 'border-[#dedad0]'
         }`}
       >
         <button
           onClick={onBackToSpread}
-          className={`flex items-center space-x-3 text-base md:text-lg font-serif transition-colors cursor-pointer group ${
+          className={`flex items-center gap-2 whitespace-nowrap text-sm sm:text-base md:text-lg font-serif transition-colors cursor-pointer group ${
             isDark
               ? 'text-[#a2a4b3] hover:text-[#eae8e3]'
               : 'text-[#555866] hover:text-[#18191e]'
           }`}
         >
           <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
-          <span>返回双联展册 (Esc)</span>
+          <span className="sm:hidden">返回展册</span>
+          <span className="hidden sm:inline">返回双联展册 (Esc)</span>
         </button>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
           <span
-            className={`text-xs md:text-sm font-mono tracking-widest uppercase font-semibold ${
+            className={`hidden md:inline text-xs md:text-sm font-mono tracking-widest uppercase font-semibold ${
               isDark ? 'text-[#a2a4b3]' : 'text-[#6e7080]'
             }`}
           >
@@ -63,7 +63,7 @@ export const GalleryStageView: React.FC<GalleryStageViewProps> = ({
             >
               <button
                 onClick={() => setActiveMedia('image')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 whitespace-nowrap px-2 sm:px-3 py-1.5 rounded transition-all cursor-pointer ${
                   activeMedia === 'image'
                     ? isDark
                       ? 'bg-[#20222b] text-[#eae8e3] font-medium'
@@ -78,7 +78,7 @@ export const GalleryStageView: React.FC<GalleryStageViewProps> = ({
               </button>
               <button
                 onClick={() => setActiveMedia('video')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 whitespace-nowrap px-2 sm:px-3 py-1.5 rounded transition-all cursor-pointer ${
                   activeMedia === 'video'
                     ? isDark
                       ? 'bg-[#20222b] text-[#eae8e3] font-medium'
@@ -121,10 +121,7 @@ export const GalleryStageView: React.FC<GalleryStageViewProps> = ({
 
       {/* Centerpiece: Museum Gallery Wall Mounted Artwork or Video */}
       <div className="my-auto flex flex-col items-center py-6 w-full">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+        <div
           className={`relative w-full p-5 md:p-6 border rounded-xs transition-colors ${
             isDark
               ? 'bg-[#131418] border-[#22242e] shadow-[0_30px_70px_rgba(0,0,0,0.85)]'
@@ -138,6 +135,7 @@ export const GalleryStageView: React.FC<GalleryStageViewProps> = ({
           {activeMedia === 'video' && album.videoUrl ? (
             <div className="relative overflow-hidden bg-black rounded-xs aspect-video">
               <video
+                data-cover="stage-artwork"
                 src={album.videoUrl}
                 controls
                 autoPlay
@@ -151,6 +149,7 @@ export const GalleryStageView: React.FC<GalleryStageViewProps> = ({
               }`}
             >
               <img
+                data-cover="stage-artwork"
                 src={album.artwork}
                 alt={album.title}
                 className="w-full h-full object-contain bg-black"
@@ -191,7 +190,7 @@ export const GalleryStageView: React.FC<GalleryStageViewProps> = ({
               </span>
             </div>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Subtle Bottom Status - ENLARGED */}
