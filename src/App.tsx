@@ -1,17 +1,27 @@
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { useReducedMotion } from 'framer-motion';
 import { LOCAL_ARCHIVE } from './data/vaultData';
 import { Album, Track, ViewMode, ThemeMode, ShelfDisplayMode } from './types';
 import { moveCover } from './coverTransition';
+import { useSyncedVideo } from './useSyncedVideo';
 import { BookshelfView } from './components/BookshelfView';
 import { BookSpreadView } from './components/BookSpreadView';
 import { GalleryStageView } from './components/GalleryStageView';
 import { QuietPlayer } from './components/QuietPlayer';
 
+function playAudio(audio: HTMLAudioElement) {
+  void audio.play().catch((error) => {
+    if (error.name !== 'AbortError') console.warn('Audio playback failed:', error);
+  });
+}
+
 export const App: React.FC = () => {
   const [albums] = useState<Album[]>(LOCAL_ARCHIVE);
   const [selectedAlbum, setSelectedAlbum] = useState<Album>(LOCAL_ARCHIVE[0]);
   const [currentView, setCurrentView] = useState<ViewMode>('shelf');
+  const [stageMedia, setStageMedia] = useState<'image' | 'video'>('image');
+  const [pvBackgroundEnabled, setPvBackgroundEnabled] = useState(false);
   const [bookOpening, setBookOpening] = useState<'waiting' | 'opening' | null>(null);
   const [shelfDisplayMode, setShelfDisplayMode] = useState<ShelfDisplayMode>('shelf');
   const [theme, setTheme] = useState<ThemeMode>(() => {
@@ -24,13 +34,14 @@ export const App: React.FC = () => {
     }
     return 'dark';
   });
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(LOCAL_ARCHIVE[0].tracks[0]);
+  const [currentTrack, setCurrentTrack] = useState<Track>(LOCAL_ARCHIVE[0].tracks[0]);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [volume, setVolume] = useState<number>(0.85);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const viewScroll = useRef({ shelf: 0, spread: 0, stage: 0 });
   const shelfScroll = useRef(0);
@@ -38,7 +49,18 @@ export const App: React.FC = () => {
   const transitionDestination = useRef<ViewMode | null>(null);
   const returnFromStageQueued = useRef(false);
   const reduceMotion = useReducedMotion();
-  const playingAlbum = albums.find((album) => album.tracks.some((track) => track.id === currentTrack?.id)) ?? selectedAlbum;
+  const playingAlbum = albums.find((album) => album.tracks.some((track) => track.id === currentTrack.id)) ?? selectedAlbum;
+  const playingVideoUrl = playingAlbum.tracks[0]?.id === currentTrack.id ? playingAlbum.videoUrl : undefined;
+  const backgroundVideoUrl = pvBackgroundEnabled ? playingVideoUrl : undefined;
+  const stageVideoUrl = currentView === 'stage' ? selectedAlbum.videoUrl : undefined;
+  const videoUrl = backgroundVideoUrl ?? stageVideoUrl;
+  const isStageVideoMode = stageMedia === 'video' && !!stageVideoUrl && stageVideoUrl === backgroundVideoUrl;
+  const videoStatus = useSyncedVideo(audioRef, videoRef, backgroundVideoUrl);
+  const isBackgroundVisible = !!backgroundVideoUrl && videoStatus === 'ready';
+
+  useLayoutEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
 
   useLayoutEffect(() => {
     if (!mainRef.current) return;
@@ -94,6 +116,7 @@ export const App: React.FC = () => {
     const moved = await navigate('stage', 'folio-artwork', 'stage-artwork', () => {
       viewScroll.current.stage = 0;
       setBookOpening(null);
+      setStageMedia('image');
     });
     if (moved && returnFromStageQueued.current) {
       returnFromStageQueued.current = false;
@@ -111,61 +134,60 @@ export const App: React.FC = () => {
     });
   };
 
-  const handlePlayTrack = (track: Track, album: Album = selectedAlbum) => {
-    setSelectedAlbum(album);
-    setCurrentTrack(track);
-    if (audioRef.current) {
-      audioRef.current.src = track.audioUrl;
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch((e) => console.warn('Audio play request blocked or pending interaction:', e));
+  const handlePlayTrack = (track: Track, restart = false) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (track.id !== currentTrack.id) {
+      // Commit the new source before play() so it can use the current user gesture.
+      flushSync(() => {
+        setCurrentTrack(track);
+        setCurrentTime(0);
+        setDuration(0);
+        setStageMedia('image');
+      });
+    } else if (restart) {
+      audio.currentTime = 0;
+      setCurrentTime(0);
     }
+    playAudio(audio);
   };
 
-  const handleTogglePlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch((e) => console.warn(e));
+  const handleStageMediaChange = (media: 'image' | 'video') => {
+    if (media === 'video') {
+      const videoTrack = stageVideoUrl ? selectedAlbum.tracks[0] : undefined;
+      if (!videoTrack) return;
+      if (currentTrack.id !== videoTrack.id) handlePlayTrack(videoTrack);
+      setPvBackgroundEnabled(true);
     }
+    setStageMedia(media);
   };
+
+  const togglePvBackground = () => {
+    if (pvBackgroundEnabled) setStageMedia('image');
+    setPvBackgroundEnabled(!pvBackgroundEnabled);
+  };
+
+  const handleTogglePlay = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) playAudio(audio);
+    else audio.pause();
+  }, []);
 
   const handleSeek = (newTime: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(newTime) || !Number.isFinite(audio.duration)) return;
+    const position = Math.max(0, Math.min(newTime, audio.duration));
+    audio.currentTime = position;
+    setCurrentTime(position);
   };
 
-  const handleVolumeChange = (newVol: number) => {
-    setVolume(newVol);
-    if (audioRef.current) {
-      audioRef.current.volume = newVol;
-    }
-  };
-
-  const handleNextTrack = () => {
-    if (!currentTrack) return;
-    const currentIndex = selectedAlbum.tracks.findIndex((t) => t.id === currentTrack.id);
-    if (currentIndex < selectedAlbum.tracks.length - 1) {
-      handlePlayTrack(selectedAlbum.tracks[currentIndex + 1], selectedAlbum);
-    } else {
-      handlePlayTrack(selectedAlbum.tracks[0], selectedAlbum);
-    }
-  };
-
-  const handlePrevTrack = () => {
-    if (!currentTrack) return;
-    const currentIndex = selectedAlbum.tracks.findIndex((t) => t.id === currentTrack.id);
-    if (currentIndex > 0) {
-      handlePlayTrack(selectedAlbum.tracks[currentIndex - 1], selectedAlbum);
-    } else {
-      handlePlayTrack(selectedAlbum.tracks[selectedAlbum.tracks.length - 1], selectedAlbum);
-    }
+  const stepTrack = (direction: 1 | -1) => {
+    const tracks = playingAlbum.tracks;
+    const index = tracks.findIndex((track) => track.id === currentTrack.id);
+    const next = tracks[(index + direction + tracks.length) % tracks.length];
+    if (next) handlePlayTrack(next, true);
   };
 
   // Keyboard shortcut (Space = Play/Pause, Esc = Back)
@@ -178,41 +200,58 @@ export const App: React.FC = () => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      if (e.code === 'Space' && !(e.target instanceof HTMLElement && e.target.closest('button'))) {
+      if (e.code === 'Space' && !e.repeat && !(e.target instanceof HTMLElement && e.target.closest('button'))) {
         e.preventDefault();
         handleTogglePlay();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, currentView, returnToSpread]);
+  }, [handleTogglePlay, currentView, returnToSpread]);
 
   const isDark = theme === 'dark';
 
   return (
     <div
-      className={`h-dvh w-full flex flex-col transition-colors duration-300 overflow-hidden ${
+      className={`relative isolate h-dvh w-full flex flex-col transition-colors duration-300 overflow-hidden ${
         isDark
           ? 'paper-texture-dark bg-[#0d0e11] text-[#eae8e3]'
           : 'paper-texture-light bg-[#f7f5ef] text-[#18191e]'
       }`}
     >
-      {/* Hidden Native Audio Element */}
       <audio
         ref={audioRef}
-        src={currentTrack?.audioUrl}
-        onTimeUpdate={() => {
-          if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+        src={currentTrack.audioUrl}
+        preload="metadata"
+        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+        onDurationChange={(e) => {
+          const length = e.currentTarget.duration;
+          setDuration(Number.isFinite(length) ? length : 0);
         }}
-        onLoadedMetadata={() => {
-          if (audioRef.current) setDuration(audioRef.current.duration);
-        }}
-        onEnded={handleNextTrack}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onEnded={() => stepTrack(1)}
+        onPlay={(e) => setIsPlaying(!e.currentTarget.paused)}
+        onPause={(e) => setIsPlaying(!e.currentTarget.paused)}
       />
+      {videoUrl && (
+        <div
+          className={`pointer-events-none absolute inset-0 bg-black ${isBackgroundVisible || isStageVideoMode ? '' : 'invisible'}`}
+          aria-hidden="true"
+        >
+          <video
+            key={videoUrl}
+            ref={videoRef}
+            src={videoUrl}
+            muted
+            playsInline
+            preload={videoUrl === playingVideoUrl ? 'auto' : 'metadata'}
+            className={`absolute inset-0 h-full w-full object-cover ${isBackgroundVisible ? '' : 'invisible'}`}
+          />
+          {isBackgroundVisible && !isStageVideoMode && (
+            <div className="pv-background-scrim absolute inset-0" data-theme={theme} />
+          )}
+        </div>
+      )}
 
-      {/* Main Full-Width Viewport (No Sidebar! 100% Physical 3D Architecture) */}
       <main ref={mainRef} data-view={currentView} className="flex-1 min-h-0 flex flex-col relative overflow-x-hidden overflow-y-auto" key={currentView}>
         {currentView === 'shelf' && (
           <BookshelfView
@@ -238,7 +277,7 @@ export const App: React.FC = () => {
             theme={theme}
             opening={bookOpening}
             onToggleTheme={toggleTheme}
-            onPlayTrack={(t) => handlePlayTrack(t, selectedAlbum)}
+            onPlayTrack={(track) => handlePlayTrack(track)}
             onOpenStage={openStage}
             onBackToShelf={returnToShelf}
           />
@@ -249,7 +288,10 @@ export const App: React.FC = () => {
             album={selectedAlbum}
             currentTrack={currentTrack}
             isPlaying={isPlaying}
+            isVideoMode={isStageVideoMode}
+            videoStatus={videoStatus}
             theme={theme}
+            onMediaChange={handleStageMediaChange}
             onToggleTheme={toggleTheme}
             onBackToSpread={returnToSpread}
           />
@@ -266,11 +308,14 @@ export const App: React.FC = () => {
         duration={duration}
         volume={volume}
         theme={theme}
+        isVideoMode={isBackgroundVisible || isStageVideoMode}
+        pvBackgroundStatus={backgroundVideoUrl ? videoStatus : undefined}
+        onTogglePvBackground={playingVideoUrl ? togglePvBackground : undefined}
         onTogglePlay={handleTogglePlay}
         onSeek={handleSeek}
-        onPrev={handlePrevTrack}
-        onNext={handleNextTrack}
-        onVolumeChange={handleVolumeChange}
+        onPrev={() => stepTrack(-1)}
+        onNext={() => stepTrack(1)}
+        onVolumeChange={setVolume}
       />
     </div>
   );

@@ -158,5 +158,38 @@ export const LOCAL_ARCHIVE: Album[] = [
         audioUrl: '/albums/luo_jinlinjia/洛天依 - 金鳞甲.m4a'
       }
     ]
+  },
+  {
+    id: 'luo-meijian-budiansha',
+    catalogNumber: 'CAT. VS-2026-MEIJIAN',
+    title: '眉间不点砂',
+    subtitle: '洛天依 14 周年生日会',
+    artist: '洛天依',
+    releaseDate: '2026 年 7 月',
+    publisher: '洛天依',
+    studio: '洛天依 14 周年生日会',
+    artwork: '/albums/luo_meijian_budiansha/cover.jpg',
+    videoUrl: '/albums/luo_meijian_budiansha/洛天依 - 眉间不点砂 (14周年生日会).mp4',
+    aspectRatio: 'landscape',
+    dimensions: '1600 × 900',
+    description: '《眉间不点砂》的洛天依 14 周年生日会版本。KyuRu☆ 作曲与编曲，果汁凉菜作词，凝沙key 调教。',
+    credits: [
+      { label: '演唱', value: '洛天依' },
+      { label: '作曲 / 编曲', value: 'KyuRu☆' },
+      { label: '作词', value: '果汁凉菜' },
+      { label: '调教', value: '凝沙key' },
+      { label: '投稿', value: '洛天依 · BV11fNu6HEvw' }
+    ],
+    tracks: [
+      {
+        id: 'meijian-01',
+        trackNumber: 1,
+        title: '眉间不点砂',
+        artist: '洛天依',
+        composer: 'KyuRu☆',
+        duration: '04:54',
+        audioUrl: '/albums/luo_meijian_budiansha/洛天依 - 眉间不点砂 (14周年生日会).m4a'
+      }
+    ]
   }
 ];

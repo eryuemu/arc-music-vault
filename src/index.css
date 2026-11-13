@@ -42,6 +42,14 @@
   background-size: 32px 32px;
 }
 
+.pv-background-scrim {
+  background: linear-gradient(180deg, rgb(8 9 13 / 0.9), rgb(8 9 13 / 0.8) 13%, rgb(8 9 13 / 0.28) 32% 64%, rgb(8 9 13 / 0.8) 85%, rgb(8 9 13 / 0.9));
+}
+
+.pv-background-scrim[data-theme='light'] {
+  background: linear-gradient(180deg, rgb(247 245 239 / 0.96), rgb(247 245 239 / 0.9) 13%, rgb(247 245 239 / 0.22) 32% 64%, rgb(247 245 239 / 0.9) 85%, rgb(247 245 239 / 0.96));
+}
+
 /* Hardcover book spine depth */
 .book-spine-shadow {
   box-shadow: 
@@ -159,6 +167,7 @@ html[data-vault-transition='stack-return']::view-transition-new(vault-cover) {
 }
 
 .shelf-row {
+  container-type: inline-size;
   justify-content: safe center;
 }
 
@@ -169,6 +178,12 @@ html[data-vault-transition='stack-return']::view-transition-new(vault-cover) {
   position: relative;
   width: clamp(12rem, 22.5vw, 20.25rem);
   aspect-ratio: 3 / 4.25;
+}
+
+@media (min-width: 1024px) {
+  .shelf-row:has(> :nth-child(4)) .shelf-book {
+    width: clamp(10rem, calc((100cqi - 10.5rem) / 4), 20.25rem);
+  }
 }
 
 .shelf-book::before {
@@ -240,6 +255,10 @@ html[data-vault-transition='stack-return']::view-transition-new(vault-cover) {
 .shelf-book-trigger {
   cursor: pointer;
   transform: translateZ(3px);
+}
+
+.shelf-book > :not(.shelf-book-trigger) {
+  pointer-events: none;
 }
 
 .shelf-book-trigger:focus-visible {
