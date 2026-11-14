@@ -5,7 +5,7 @@ import { asRecord, readPreference, writePreference } from './preferences';
 
 const resumeKey = 'arc_resume';
 const modeKey = 'arc_playback_mode';
-const validModes: PlaybackMode[] = ['all', 'one', 'shuffle'];
+const validModes: PlaybackMode[] = ['all', 'album', 'one', 'shuffle'];
 
 export function usePlayback(albums: Album[]) {
   const albumByTrack = useMemo(() => new Map(
@@ -59,7 +59,8 @@ export function usePlayback(albums: Album[]) {
 
   const cycleMode = useCallback(() => {
     const cycleMap: Record<PlaybackMode, PlaybackMode> = {
-      all: 'one',
+      all: 'album',
+      album: 'one',
       one: 'shuffle',
       shuffle: 'all'
     };
@@ -184,7 +185,27 @@ export function usePlayback(albums: Album[]) {
       return;
     }
 
-    // 3. Shuffle mode ('shuffle')
+    const trackIndexInAlbum = currentAlbum.tracks.findIndex((track) => track.id === trackId);
+
+    // 3. Album loop mode ('album'): loop strictly within current album
+    if (modeRef.current === 'album') {
+      const albumTracks = currentAlbum.tracks;
+      if (albumTracks.length <= 1) {
+        seek(0);
+        if (audio && audio.paused) play(audio);
+        return;
+      }
+      if (direction === 1) {
+        const nextIndex = (trackIndexInAlbum + 1) % albumTracks.length;
+        playTrack(albumTracks[nextIndex], true);
+      } else {
+        const prevIndex = (trackIndexInAlbum - 1 + albumTracks.length) % albumTracks.length;
+        playTrack(albumTracks[prevIndex], true);
+      }
+      return;
+    }
+
+    // 4. Shuffle mode ('shuffle')
     if (modeRef.current === 'shuffle') {
       const allTracks = albums.flatMap((album) => album.tracks);
       if (allTracks.length <= 1) {
@@ -199,8 +220,7 @@ export function usePlayback(albums: Album[]) {
       }
     }
 
-    // 4. Sequential / Vault Loop ('all')
-    const trackIndexInAlbum = currentAlbum.tracks.findIndex((track) => track.id === trackId);
+    // 5. Sequential / Vault Loop ('all')
     if (direction === 1) {
       if (trackIndexInAlbum < currentAlbum.tracks.length - 1) {
         playTrack(currentAlbum.tracks[trackIndexInAlbum + 1], true);

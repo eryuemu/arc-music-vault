@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film, Maximize2, Repeat, Repeat1, Shuffle, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film, Maximize2, Repeat, Repeat1, Shuffle, ListMusic, DiscAlbum } from 'lucide-react';
 import { Track, Album, ThemeMode, VideoStatus, PlaybackMode } from '../types';
 import './QuietPlayer.css';
 
@@ -79,7 +79,11 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   const durationLabel = canSeek ? formatSeconds(duration) : currentTrack.duration;
   const playLabel = isPlaying ? '暂停' : '播放';
   const muteLabel = volume === 0 ? '取消静音' : '静音';
-  const modeLabel = mode === 'one' ? '单曲循环' : mode === 'shuffle' ? '随机播放' : '全馆连播';
+  const modeLabel =
+    mode === 'one' ? '单曲循环'
+    : mode === 'album' ? '专辑内循环'
+    : mode === 'shuffle' ? '随机播放'
+    : '全馆连播';
 
   const pvBackgroundActive = pvBackgroundStatus !== undefined;
   const pvBackgroundMessage = pvBackgroundStatus === 'error' ? 'PV 背景加载失败'
@@ -156,6 +160,8 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
               >
                 {mode === 'one' ? (
                   <Repeat1 className="w-4 h-4 text-[#c5a059]" />
+                ) : mode === 'album' ? (
+                  <DiscAlbum className="w-4 h-4 text-[#c5a059]" />
                 ) : mode === 'shuffle' ? (
                   <Shuffle className="w-4 h-4 text-[#c5a059]" />
                 ) : (

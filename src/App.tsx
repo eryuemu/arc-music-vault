@@ -401,7 +401,11 @@ export const App: React.FC = () => {
             mode={playback.mode}
             onCycleMode={() => {
               const nextMode = playback.cycleMode();
-              const label = nextMode === 'one' ? '单曲循环' : nextMode === 'shuffle' ? '随机播放' : '全馆连播';
+              const label =
+                nextMode === 'one' ? '单曲循环'
+                : nextMode === 'album' ? '专辑内循环'
+                : nextMode === 'shuffle' ? '随机播放'
+                : '全馆连播';
               report(`播放模式：${label}`);
             }}
             theme={theme}
