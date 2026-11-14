@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film, Maximize2 } from 'lucide-react';
 import { Track, Album, ThemeMode, VideoStatus } from '../types';
 import './QuietPlayer.css';
 
@@ -15,6 +15,7 @@ interface QuietPlayerProps {
   isVideoMode?: boolean;
   pvBackgroundStatus?: VideoStatus;
   onTogglePvBackground?: () => void;
+  onEnterPvFocus?: React.MouseEventHandler<HTMLButtonElement>;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onPrev: () => void;
@@ -40,6 +41,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   isVideoMode = false,
   pvBackgroundStatus,
   onTogglePvBackground,
+  onEnterPvFocus,
   onTogglePlay,
   onSeek,
   onPrev,
@@ -182,6 +184,18 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
               >
                 <Film className={`w-4 h-4 ${pvBackgroundStatus === 'loading' ? 'motion-safe:animate-pulse' : ''}`} aria-hidden="true" />
                 <span className="hidden lg:inline">PV 背景</span>
+              </button>
+            )}
+            {onEnterPvFocus && (
+              <button
+                type="button"
+                onClick={onEnterPvFocus}
+                aria-label="清屏观看 PV"
+                title="清屏观看 PV"
+                className="flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-white/20 px-2 text-xs text-white/90 transition-colors hover:border-[#e2bd77]/50 hover:bg-[#e2bd77]/15 hover:text-[#f0d49b]"
+              >
+                <Maximize2 className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">清屏</span>
               </button>
             )}
             {pvBackgroundMessage && <span className="sr-only" role="status">{pvBackgroundMessage}</span>}

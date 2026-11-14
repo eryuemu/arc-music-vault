@@ -42,12 +42,99 @@
   background-size: 32px 32px;
 }
 
+[data-pv-focus] {
+  --pv-focus-duration: 640ms;
+  --pv-focus-ease: cubic-bezier(0.22, 0.72, 0.2, 1);
+}
+
+.pv-screen {
+  container-type: size;
+}
+
+.pv-video {
+  --pv-aspect: 1.7777778;
+  --pv-width-from-height: calc(100cqh * var(--pv-aspect));
+  --pv-height-from-width: calc(100cqw / var(--pv-aspect));
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100cqw, var(--pv-width-from-height));
+  height: max(100cqh, var(--pv-height-from-width));
+  max-width: none;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+  transition: width var(--pv-focus-duration) var(--pv-focus-ease),
+    height var(--pv-focus-duration) var(--pv-focus-ease);
+}
+
 .pv-background-scrim {
   background: linear-gradient(180deg, rgb(8 9 13 / 0.9), rgb(8 9 13 / 0.8) 13%, rgb(8 9 13 / 0.28) 32% 64%, rgb(8 9 13 / 0.8) 85%, rgb(8 9 13 / 0.9));
+  transition: opacity var(--pv-focus-duration) var(--pv-focus-ease);
 }
 
 .pv-background-scrim[data-theme='light'] {
   background: linear-gradient(180deg, rgb(247 245 239 / 0.96), rgb(247 245 239 / 0.9) 13%, rgb(247 245 239 / 0.22) 32% 64%, rgb(247 245 239 / 0.9) 85%, rgb(247 245 239 / 0.96));
+}
+
+.pv-view,
+.pv-player {
+  transition: transform var(--pv-focus-duration) var(--pv-focus-ease),
+    opacity 440ms var(--pv-focus-ease);
+}
+
+[data-pv-focus='true'] .pv-view {
+  transform: translateY(clamp(-8rem, -11dvh, -3rem));
+  opacity: 0;
+}
+
+[data-pv-focus='true'] .pv-player {
+  transform: translateY(105%);
+  opacity: 0;
+}
+
+[data-pv-focus='true'] .pv-background-scrim {
+  opacity: 0;
+}
+
+[data-pv-focus='true'] .pv-video {
+  width: min(100cqw, var(--pv-width-from-height));
+  height: min(100cqh, var(--pv-height-from-width));
+}
+
+.pv-exit-hint {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  animation: pv-exit-hint 380ms 2.4s backwards;
+}
+
+.pv-exit-hint:hover,
+.pv-exit[data-pv-keyboard='true']:focus .pv-exit-hint {
+  animation: none;
+  opacity: 1;
+}
+
+.pv-exit[data-pv-keyboard='true']:focus .pv-exit-hint {
+  outline: 2px solid #e2bd77;
+  outline-offset: 3px;
+}
+
+@keyframes pv-exit-hint {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-view,
+  .pv-player,
+  .pv-video,
+  .pv-background-scrim,
+  .pv-exit-hint {
+    transition: none;
+  }
+
+  .pv-exit-hint {
+    animation-timing-function: steps(1, end);
+  }
 }
 
 /* Hardcover book spine depth */
@@ -167,7 +254,7 @@ html[data-vault-transition='stack-return']::view-transition-new(vault-cover) {
 }
 
 .shelf-row {
-  container-type: inline-size;
+  --book-width-scale: 0.95;
   justify-content: safe center;
 }
 
@@ -176,14 +263,8 @@ html[data-vault-transition='stack-return']::view-transition-new(vault-cover) {
   --book-cloth: #312822;
   --book-paper-edge: repeating-linear-gradient(90deg, #a7977e 0 1px, #d8cbb1 1px 3px, #bcac90 3px 4px);
   position: relative;
-  width: clamp(12rem, 22.5vw, 20.25rem);
+  width: calc(clamp(12rem, 22.5vw, 20.25rem) * var(--book-width-scale, 1));
   aspect-ratio: 3 / 4.25;
-}
-
-@media (min-width: 1024px) {
-  .shelf-row:has(> :nth-child(4)) .shelf-book {
-    width: clamp(10rem, calc((100cqi - 10.5rem) / 4), 20.25rem);
-  }
 }
 
 .shelf-book::before {

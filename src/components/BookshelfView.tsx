@@ -122,7 +122,9 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
       </header>
 
       {/* Main Exhibition Hall Stage (Books Centerpiece) */}
-      <main className="my-auto py-6 md:py-8 flex flex-col items-center justify-center relative">
+      <main className={`my-auto py-6 md:py-8 flex flex-col items-center justify-center relative ${
+        displayMode === 'shelf' ? 'lg:w-[min(93.5rem,calc(100vw-3rem))] lg:self-center' : ''
+      }`}>
         {/* Soft overhead gallery spotlight gradient */}
         <div
           className={`absolute -top-16 w-3/4 h-72 blur-3xl pointer-events-none ${
@@ -151,7 +153,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
 
         {/* Solid Architectural Shelf Beam Plinth */}
         {displayMode === 'shelf' && (
-          <div className="w-full max-w-5xl relative mt-4">
+          <div className="w-full max-w-5xl lg:max-w-[calc(100%-4rem)] relative mt-4">
             <div
               className={`w-full h-4 border-t border-b shadow-2xl flex items-center px-6 ${
                 isDark

@@ -12,9 +12,11 @@ interface BookSpreadViewProps {
   isPlaying: boolean;
   theme: ThemeMode;
   opening: 'waiting' | 'opening' | null;
+  closing: boolean;
   onToggleTheme: () => void;
   onPlayTrack: (track: Track) => void;
   onOpenStage: () => void;
+  onCloseBook: () => void;
   onBackToShelf: () => void;
 }
 
@@ -24,15 +26,16 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
   isPlaying,
   theme,
   opening,
+  closing,
   onToggleTheme,
   onPlayTrack,
   onOpenStage,
+  onCloseBook,
   onBackToShelf
 }) => {
   const isDark = theme === 'dark';
   const reduceMotion = useReducedMotion();
   const viewRef = useRef<HTMLDivElement>(null);
-  const [closing, setClosing] = useState(false);
   const [opened, setOpened] = useState(!opening || !!reduceMotion);
   const progress = useMotionValue(opening && !reduceMotion ? 0 : 1);
   const coverAngle = useTransform(progress, [0, 0.18, 0.47, 0.75, 0.9, 1], ['180deg', '150deg', '55deg', '3deg', '-1.4deg', '0deg']);
@@ -68,16 +71,6 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
     if (closing) viewRef.current?.closest('main')?.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
   }, [closing, reduceMotion]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.repeat) {
-        setClosing(true);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
   // Check if current track belongs to this album
   const isCurrentAlbumActive = album.tracks.some((t) => t.id === currentTrack?.id);
   const isThisAlbumPlaying = isCurrentAlbumActive && isPlaying;
@@ -92,7 +85,7 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
       >
         {/* Back to Shelf Button */}
         <button
-          onClick={() => setClosing(true)}
+          onClick={onCloseBook}
           className={`flex items-center gap-2.5 whitespace-nowrap text-sm md:text-base font-serif transition-colors cursor-pointer group ${
             isDark
               ? 'text-[#b0b3c6] hover:text-[#ffffff]'
