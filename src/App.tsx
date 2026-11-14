@@ -9,6 +9,7 @@ import { BookshelfView } from './components/BookshelfView';
 import { BookSpreadView } from './components/BookSpreadView';
 import { GalleryStageView } from './components/GalleryStageView';
 import { QuietPlayer } from './components/QuietPlayer';
+import { FolioQueueDrawer } from './components/FolioQueueDrawer';
 import { knownIds, moveItem, readPreference, writePreference } from './preferences';
 import { usePlayback } from './usePlayback';
 
@@ -31,6 +32,7 @@ export const App: React.FC = () => {
   const noticeTimer = useRef<ReturnType<typeof setTimeout>>();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [stackPage, setStackPage] = useState(0);
   const [selectedAlbum, setSelectedAlbum] = useState<Album>(LOCAL_ARCHIVE[0]);
   const [currentView, setCurrentView] = useState<ViewMode>('shelf');
@@ -216,6 +218,11 @@ export const App: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.key === 'Escape' && !e.repeat && !document.fullscreenElement) {
+        if (queueOpen) {
+          e.preventDefault();
+          setQueueOpen(false);
+          return;
+        }
         if (isPvFocus) {
           e.preventDefault();
           setPvFocusEnabled(false);
@@ -410,10 +417,23 @@ export const App: React.FC = () => {
             onNext={() => playback.step(1)}
             onVolumeChange={playback.setVolume}
             onToggleMute={playback.toggleMute}
+            isQueueOpen={queueOpen}
+            onToggleQueue={() => setQueueOpen((prev) => !prev)}
             error={playback.error}
           />
         </div>
       </div>
+
+      <FolioQueueDrawer
+        isOpen={queueOpen}
+        onClose={() => setQueueOpen(false)}
+        albums={albums}
+        currentTrack={currentTrack}
+        isPlaying={playback.isPlaying}
+        onPlayTrack={togglePlayTrack}
+        onPlayAlbum={playAlbum}
+        theme={theme}
+      />
 
       <div className="pointer-events-none absolute inset-x-4 bottom-40 z-50 flex justify-center md:bottom-28" role="status">
         {notice && !isPvFocus && (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film, Maximize2, Repeat, Repeat1, Shuffle } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film, Maximize2, Repeat, Repeat1, Shuffle, ListMusic } from 'lucide-react';
 import { Track, Album, ThemeMode, VideoStatus, PlaybackMode } from '../types';
 import './QuietPlayer.css';
 
@@ -25,6 +25,8 @@ interface QuietPlayerProps {
   onNext: () => void;
   onVolumeChange: (vol: number) => void;
   onToggleMute?: () => void;
+  isQueueOpen?: boolean;
+  onToggleQueue?: () => void;
   error: string;
 }
 
@@ -56,6 +58,8 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   onNext,
   onVolumeChange,
   onToggleMute,
+  isQueueOpen = false,
+  onToggleQueue,
   error
 }) => {
   const isDark = isVideoMode || theme === 'dark';
@@ -329,6 +333,25 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
             className="quiet-player-range w-16 max-w-full lg:w-24"
             style={{ '--player-progress': `${volume * 100}%` } as React.CSSProperties}
           />
+          {onToggleQueue && (
+            <button
+              type="button"
+              onClick={onToggleQueue}
+              aria-label={isQueueOpen ? '收起卷目清单' : '打开卷目清单'}
+              title={isQueueOpen ? '收起卷目清单' : '馆藏曲目卷目清单 (歌单)'}
+              className={`p-1.5 rounded transition-all cursor-pointer border ml-1 ${
+                isQueueOpen
+                  ? 'border-[#c5a059] bg-[#c5a059]/20 text-[#c5a059] shadow-sm'
+                  : isVideoMode
+                  ? 'border-transparent text-white/80 hover:text-white hover:bg-white/10'
+                  : isDark
+                  ? 'border-transparent text-[#9698a8] hover:text-white hover:bg-[#1f212c]'
+                  : 'border-transparent text-[#646675] hover:text-[#18191e] hover:bg-[#eae6dc]'
+              }`}
+            >
+              <ListMusic className="w-4 h-4" />
+            </button>
+          )}
         </div>
         {error && <p className="col-span-full text-xs text-red-500" role="alert">{error}</p>}
       </div>
