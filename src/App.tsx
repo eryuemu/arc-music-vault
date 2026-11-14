@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-import { flushSync } from 'react-dom';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { Minimize2 } from 'lucide-react';
 import { LOCAL_ARCHIVE } from './data/vaultData';
@@ -10,40 +9,50 @@ import { BookshelfView } from './components/BookshelfView';
 import { BookSpreadView } from './components/BookSpreadView';
 import { GalleryStageView } from './components/GalleryStageView';
 import { QuietPlayer } from './components/QuietPlayer';
+import { knownIds, moveItem, readPreference, writePreference } from './preferences';
+import { usePlayback } from './usePlayback';
 
-function playAudio(audio: HTMLAudioElement) {
-  void audio.play().catch((error) => {
-    if (error.name !== 'AbortError') console.warn('Audio playback failed:', error);
-  });
-}
+const albumIds = new Set(LOCAL_ARCHIVE.map((album) => album.id));
+const trackIndex = new Map(LOCAL_ARCHIVE.flatMap((album) => album.tracks.map((track) => [track.id, { album, track }] as const)));
+const shelfModes: ShelfDisplayMode[] = ['shelf', 'stacked'];
 
 export const App: React.FC = () => {
-  const [albums] = useState<Album[]>(LOCAL_ARCHIVE);
+  const [albumOrder, setAlbumOrder] = useState(() => knownIds(readPreference('arc_shelf_order'), albumIds));
+  const albums = useMemo(() => {
+    const known = new Map(LOCAL_ARCHIVE.map((album) => [album.id, album]));
+    return [...albumOrder.map((id) => known.get(id)!), ...LOCAL_ARCHIVE.filter((album) => !albumOrder.includes(album.id))];
+  }, [albumOrder]);
+  const playback = usePlayback(LOCAL_ARCHIVE);
+  const { audioRef, togglePlay: handleTogglePlay } = playback;
+  const { track: currentTrack, album: playingAlbum } = trackIndex.get(playback.trackId)!;
+  const [notice, setNotice] = useState('');
+  const noticeTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [stackPage, setStackPage] = useState(0);
   const [selectedAlbum, setSelectedAlbum] = useState<Album>(LOCAL_ARCHIVE[0]);
   const [currentView, setCurrentView] = useState<ViewMode>('shelf');
   const [stageMedia, setStageMedia] = useState<'image' | 'video'>('image');
-  const [pvBackgroundEnabled, setPvBackgroundEnabled] = useState(false);
+  const [pvBackgroundEnabled, setPvBackgroundEnabled] = useState(() => readPreference('arc_pv_background') === true);
   const [pvFocusEnabled, setPvFocusEnabled] = useState<false | 'keyboard' | 'pointer'>(false);
   const [bookOpening, setBookOpening] = useState<'waiting' | 'opening' | null>(null);
   const [bookClosing, setBookClosing] = useState(false);
-  const [shelfDisplayMode, setShelfDisplayMode] = useState<ShelfDisplayMode>('shelf');
+  const [shelfDisplayMode, setShelfDisplayMode] = useState(() => {
+    const saved = readPreference('arc_shelf_display');
+    return shelfModes.find((mode) => mode === saved) ?? 'shelf';
+  });
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const urlTheme = params.get('theme');
       if (urlTheme === 'light' || urlTheme === 'dark') return urlTheme;
-      const saved = localStorage.getItem('arc_theme') as ThemeMode | null;
+      const saved = (() => {
+        try { return localStorage.getItem('arc_theme'); } catch { return null; }
+      })();
       if (saved === 'light' || saved === 'dark') return saved;
     }
     return 'dark';
   });
-  const [currentTrack, setCurrentTrack] = useState<Track>(LOCAL_ARCHIVE[0].tracks[0]);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(0.85);
-
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const interfaceRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -54,7 +63,6 @@ export const App: React.FC = () => {
   const transitionDestination = useRef<ViewMode | null>(null);
   const returnFromStageQueued = useRef(false);
   const reduceMotion = useReducedMotion();
-  const playingAlbum = albums.find((album) => album.tracks.some((track) => track.id === currentTrack.id)) ?? selectedAlbum;
   const playingVideoUrl = playingAlbum.tracks[0]?.id === currentTrack.id ? playingAlbum.videoUrl : undefined;
   const backgroundVideoUrl = pvBackgroundEnabled ? playingVideoUrl : undefined;
   const stageVideoUrl = currentView === 'stage' ? selectedAlbum.videoUrl : undefined;
@@ -64,9 +72,32 @@ export const App: React.FC = () => {
   const isBackgroundVisible = !!backgroundVideoUrl && videoStatus === 'ready';
   const isPvFocus = !!pvFocusEnabled && isBackgroundVisible;
 
-  useLayoutEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-  }, [volume]);
+  useEffect(() => writePreference('arc_shelf_order', albumOrder), [albumOrder]);
+  useEffect(() => writePreference('arc_shelf_display', shelfDisplayMode), [shelfDisplayMode]);
+  useEffect(() => writePreference('arc_pv_background', pvBackgroundEnabled), [pvBackgroundEnabled]);
+  useEffect(() => () => clearTimeout(noticeTimer.current), []);
+
+  const report = (message: string) => {
+    clearTimeout(noticeTimer.current);
+    setNotice(message);
+    noticeTimer.current = setTimeout(() => setNotice(''), 2300);
+  };
+
+  const moveAlbum = (id: string, target: string) => {
+    const ids = albums.map((album) => album.id);
+    const position = ids.indexOf(target);
+    setAlbumOrder(moveItem(ids, ids.indexOf(id), position));
+    report(`已移到第 ${position + 1} 位`);
+  };
+
+  useLayoutEffect(() => setStageMedia('image'), [currentTrack.id]);
+
+  const playTrack = playback.playTrack;
+
+  const playAlbum = (album: Album) => {
+    const [firstTrack] = album.tracks;
+    if (firstTrack) playTrack(firstTrack);
+  };
 
   useLayoutEffect(() => {
     if (!mainRef.current) return;
@@ -158,30 +189,11 @@ export const App: React.FC = () => {
     });
   };
 
-  const handlePlayTrack = (track: Track, restart = false) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (track.id !== currentTrack.id) {
-      // Commit the new source before play() so it can use the current user gesture.
-      flushSync(() => {
-        setCurrentTrack(track);
-        setCurrentTime(0);
-        setDuration(0);
-        setStageMedia('image');
-      });
-    } else if (restart) {
-      audio.currentTime = 0;
-      setCurrentTime(0);
-    }
-    playAudio(audio);
-  };
-
   const handleStageMediaChange = (media: 'image' | 'video') => {
     if (media === 'video') {
       const videoTrack = stageVideoUrl ? selectedAlbum.tracks[0] : undefined;
       if (!videoTrack) return;
-      if (currentTrack.id !== videoTrack.id) handlePlayTrack(videoTrack);
+      if (currentTrack.id !== videoTrack.id || !playback.isPlaying) playTrack(videoTrack);
       setPvBackgroundEnabled(true);
     }
     setStageMedia(media);
@@ -192,30 +204,9 @@ export const App: React.FC = () => {
     setPvBackgroundEnabled(!pvBackgroundEnabled);
   };
 
-  const handleTogglePlay = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) playAudio(audio);
-    else audio.pause();
-  }, []);
-
-  const handleSeek = (newTime: number) => {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(newTime) || !Number.isFinite(audio.duration)) return;
-    const position = Math.max(0, Math.min(newTime, audio.duration));
-    audio.currentTime = position;
-    setCurrentTime(position);
-  };
-
-  const stepTrack = (direction: 1 | -1) => {
-    const tracks = playingAlbum.tracks;
-    const index = tracks.findIndex((track) => track.id === currentTrack.id);
-    const next = tracks[(index + direction + tracks.length) % tracks.length];
-    if (next) handlePlayTrack(next, true);
-  };
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (e.key === 'Escape' && !e.repeat && !document.fullscreenElement) {
         if (isPvFocus) {
           e.preventDefault();
@@ -259,14 +250,7 @@ export const App: React.FC = () => {
         ref={audioRef}
         src={currentTrack.audioUrl}
         preload="metadata"
-        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-        onDurationChange={(e) => {
-          const length = e.currentTarget.duration;
-          setDuration(Number.isFinite(length) ? length : 0);
-        }}
-        onEnded={() => stepTrack(1)}
-        onPlay={(e) => setIsPlaying(!e.currentTarget.paused)}
-        onPause={(e) => setIsPlaying(!e.currentTarget.paused)}
+        {...playback.audioEvents}
       />
       {videoUrl && (
         <div
@@ -297,6 +281,20 @@ export const App: React.FC = () => {
           {currentView === 'shelf' && (
             <BookshelfView
               albums={albums}
+              search={search}
+              searchOpen={searchOpen}
+              onSearchOpenChange={setSearchOpen}
+              stackPage={stackPage}
+              onStackPageChange={setStackPage}
+              onSearch={(value) => {
+                setSearch(value);
+                shelfScroll.current = 0;
+                const shelf = mainRef.current?.querySelector('[data-shelf-scroll]');
+                if (shelf) shelf.scrollLeft = 0;
+              }}
+              onMoveAlbum={moveAlbum}
+              onPlayAlbum={playAlbum}
+              onPlayTrack={playTrack}
               theme={theme}
               displayMode={shelfDisplayMode}
               onDisplayModeChange={(mode) => {
@@ -314,12 +312,12 @@ export const App: React.FC = () => {
             <BookSpreadView
               album={selectedAlbum}
               currentTrack={currentTrack}
-              isPlaying={isPlaying}
+              isPlaying={playback.isPlaying}
               theme={theme}
               opening={bookOpening}
               closing={bookClosing}
               onToggleTheme={toggleTheme}
-              onPlayTrack={(track) => handlePlayTrack(track)}
+              onPlayTrack={playTrack}
               onOpenStage={openStage}
               onCloseBook={() => setBookClosing(true)}
               onBackToShelf={returnToShelf}
@@ -330,7 +328,7 @@ export const App: React.FC = () => {
             <GalleryStageView
               album={selectedAlbum}
               currentTrack={currentTrack}
-              isPlaying={isPlaying}
+              isPlaying={playback.isPlaying}
               isVideoMode={isStageVideoMode}
               videoStatus={videoStatus}
               theme={theme}
@@ -345,25 +343,32 @@ export const App: React.FC = () => {
           <QuietPlayer
             currentTrack={currentTrack}
             currentAlbum={playingAlbum}
-            onOpenCover={currentView === 'shelf' ? () => openBook(playingAlbum, 'player-cover') : undefined}
-            isPlaying={isPlaying}
-            currentTime={currentTime}
-            duration={duration}
-            volume={volume}
+            onOpenCover={currentView === 'shelf' ? () => void openBook(playingAlbum, 'player-cover') : undefined}
+            isPlaying={playback.isPlaying}
+            currentTime={playback.currentTime}
+            duration={playback.duration}
+            volume={playback.volume}
             theme={theme}
             isVideoMode={isBackgroundVisible || isStageVideoMode}
             pvBackgroundStatus={backgroundVideoUrl ? videoStatus : undefined}
             onTogglePvBackground={playingVideoUrl ? togglePvBackground : undefined}
-              onEnterPvFocus={isBackgroundVisible ? (event) => {
-                if (!transitionDestination.current) setPvFocusEnabled(event.detail === 0 ? 'keyboard' : 'pointer');
-              } : undefined}
+            onEnterPvFocus={isBackgroundVisible ? (event) => {
+              if (!transitionDestination.current) setPvFocusEnabled(event.detail === 0 ? 'keyboard' : 'pointer');
+            } : undefined}
             onTogglePlay={handleTogglePlay}
-            onSeek={handleSeek}
-            onPrev={() => stepTrack(-1)}
-            onNext={() => stepTrack(1)}
-            onVolumeChange={setVolume}
+            onSeek={playback.seek}
+            onPrev={() => playback.step(-1)}
+            onNext={() => playback.step(1)}
+            onVolumeChange={playback.setVolume}
+            error={playback.error}
           />
         </div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-4 bottom-40 z-50 flex justify-center md:bottom-28" role="status">
+        {notice && !isPvFocus && (
+          <span className="rounded-md border border-[#c5a059]/40 bg-[#17171b] px-4 py-2 text-sm text-[#f5e7cc] shadow-lg">{notice}</span>
+        )}
       </div>
 
       {isPvFocus && (

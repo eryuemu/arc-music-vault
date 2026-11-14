@@ -1,10 +1,22 @@
-import React from 'react';
-import { Layers, Columns3, Compass, Sun, Moon } from 'lucide-react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Layers, Columns3, Sun, Moon, Search, X, Grip, GripVertical, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { ThreeDimensionalBook } from './ThreeDimensionalBook';
-import { Album, ShelfDisplayMode, ThemeMode } from '../types';
+import { Album, ShelfDisplayMode, ThemeMode, Track } from '../types';
+import { useShelfDrag } from './useShelfDrag';
+import { matchesSearch, moveItem } from '../preferences';
 
 interface BookshelfViewProps {
   albums: Album[];
+  search: string;
+  searchOpen: boolean;
+  stackPage: number;
+  onSearch: (query: string) => void;
+  onSearchOpenChange: (open: boolean) => void;
+  onStackPageChange: (page: number) => void;
+  onMoveAlbum: (id: string, target: string) => void;
+  onPlayAlbum: (album: Album) => void;
+  onPlayTrack: (track: Track) => void;
   theme: ThemeMode;
   displayMode: ShelfDisplayMode;
   onDisplayModeChange: (mode: ShelfDisplayMode) => void;
@@ -12,8 +24,20 @@ interface BookshelfViewProps {
   onSelectAlbum: (album: Album) => void;
 }
 
+const stackPageSize = 4;
+const searchPageSize = 40;
+
 export const BookshelfView: React.FC<BookshelfViewProps> = ({
   albums,
+  search,
+  searchOpen,
+  stackPage,
+  onSearch,
+  onSearchOpenChange,
+  onStackPageChange,
+  onMoveAlbum,
+  onPlayAlbum,
+  onPlayTrack,
   theme,
   displayMode,
   onDisplayModeChange,
@@ -21,6 +45,110 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
   onSelectAlbum
 }) => {
   const isDark = theme === 'dark';
+  const reduceMotion = useReducedMotion();
+  const [sorting, setSorting] = useState(false);
+  const [searchLimit, setSearchLimit] = useState(searchPageSize);
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
+  const rowRef = useRef<HTMLDivElement>(null);
+  const { active, handle } = useShelfDrag(onMoveAlbum);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const searchButton = useRef<HTMLButtonElement>(null);
+  const query = search.trim().toLocaleLowerCase();
+  const results = useMemo(() => {
+    return albums.flatMap((album) => {
+      const metadata = [album.title, album.subtitle, album.artist, album.catalogNumber];
+      const tracks = query ? album.tracks.filter((track) => matchesSearch(query, [album.title, track.title, track.artist, track.composer])) : [];
+      return matchesSearch(query, metadata) || tracks.length ? [{ album, tracks }] : [];
+    });
+  }, [albums, query]);
+  const mode = query ? 'search' : displayMode;
+  const stackPageCount = Math.ceil(results.length / stackPageSize);
+  const canSort = sorting && !query;
+  const orderedResults = active
+    ? moveItem(results, results.findIndex(({ album }) => album.id === active.id),
+      results.findIndex(({ album }) => album.id === active.target))
+    : results;
+  const displayedAlbums = mode === 'stacked'
+    ? orderedResults.slice(stackPage * stackPageSize, (stackPage + 1) * stackPageSize) : orderedResults;
+  const toolbarButton = 'archive-control inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs sm:text-sm';
+  const displayButton = (value: ShelfDisplayMode) =>
+    `archive-control flex items-center gap-1.5 rounded px-2.5 py-1.5 aria-pressed:bg-[#c5a059]/15 ${displayMode === value ? 'font-semibold' : ''}`;
+
+  const updateScrollEdges = () => {
+    const row = rowRef.current;
+    if (!row) return;
+    const remaining = row.scrollWidth - row.clientWidth - row.scrollLeft;
+    const last = row.lastElementChild?.getBoundingClientRect();
+    const bounds = row.getBoundingClientRect();
+    const first = row.firstElementChild?.getBoundingClientRect();
+    const left = row.scrollLeft > 5 && !!first && first.left < bounds.left - 3;
+    const right = remaining > 5 && !!last && last.right > bounds.right + 3;
+    setScrollEdges((current) => current.left === left && current.right === right ? current : { left, right });
+  };
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    updateScrollEdges();
+    const observer = new ResizeObserver(updateScrollEdges);
+    observer.observe(row);
+    if (row.firstElementChild) observer.observe(row.firstElementChild);
+    return () => observer.disconnect();
+  }, [mode, albums.length, canSort]);
+
+  const closeSearch = () => {
+    onSearch('');
+    onSearchOpenChange(false);
+    searchButton.current?.focus({ preventScroll: true });
+  };
+
+  useEffect(() => {
+    if (searchOpen) searchInput.current?.focus({ preventScroll: true });
+  }, [searchOpen]);
+
+  useEffect(() => {
+    const find = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'f' || (!event.ctrlKey && !event.metaKey) || searchButton.current?.closest('[inert]')) return;
+      event.preventDefault();
+      setSorting(false);
+      onSearchOpenChange(true);
+      searchInput.current?.focus({ preventScroll: true });
+    };
+    window.addEventListener('keydown', find);
+    return () => window.removeEventListener('keydown', find);
+  }, [onSearchOpenChange]);
+
+  const scrollShelf = (direction: number) => {
+    const row = rowRef.current;
+    row?.scrollBy({ left: direction * Math.max(180, row.clientWidth * 0.7),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  };
+
+  const sortControls = (album: Album, index: number) => !canSort ? undefined : (
+    <div className="archive-control flex w-fit items-center gap-1 rounded-md border p-0.5" aria-label={`排序《${album.title}》`}>
+      <button
+        type="button"
+        {...handle(album.id)}
+        aria-label={`拖动《${album.title}》排序`}
+        title="拖到目标藏品的位置"
+        className="touch-none cursor-grab rounded p-2 hover:bg-[#c5a059]/20 active:cursor-grabbing"
+      ><GripVertical className="pointer-events-none h-4 w-4" aria-hidden="true" /></button>
+      {([-1, 1] as const).map((direction) => {
+        const neighbor = results[index + direction]?.album;
+        const label = direction === -1 ? '向前移动' : '向后移动';
+        const Icon = direction === -1 ? ChevronLeft : ChevronRight;
+        return (
+          <button key={direction} type="button" disabled={!neighbor}
+            aria-label={`${label}《${album.title}》`} title={label}
+            onClick={() => neighbor && onMoveAlbum(album.id, neighbor.id)}
+            className="rounded p-2 hover:bg-[#c5a059]/20 disabled:opacity-30"
+          ><Icon className="h-4 w-4" /></button>
+        );
+      })}
+    </div>
+  );
+
+  const dropClass = (id: string) => active?.id === id ? 'shelf-drag-slot' : '';
 
   return (
     <div className="flex-1 flex flex-col justify-between px-6 md:px-14 lg:px-20 py-4 md:py-6 w-full max-w-7xl mx-auto select-none">
@@ -55,7 +183,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
         </div>
 
         {/* Right Controls: Theme Toggle & Display Mode Switcher */}
-        <div className="flex shrink-0 items-center space-x-3.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3.5">
           {/* 黑白切换按钮 (Light / Dark Monochrome Toggle) */}
           <button
             onClick={onToggleTheme}
@@ -87,98 +215,212 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
                 : 'bg-[#ffffff] border-[#d4d0c5] shadow-sm'
             }`}
           >
-            <button
-              onClick={() => onDisplayModeChange('shelf')}
-              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded transition-all cursor-pointer ${
-                displayMode === 'shelf'
-                  ? isDark
-                    ? 'bg-[#20222b] text-[#eae8e3] font-medium shadow-sm'
-                    : 'bg-[#ebe8df] text-[#18191e] font-semibold'
-                  : isDark
-                  ? 'text-[#707280] hover:text-[#c4c2ba]'
-                  : 'text-[#828492] hover:text-[#22242e]'
-              }`}
-            >
-              <Columns3 className="w-4 h-4" />
-              <span>立架并列</span>
-            </button>
-            <button
-              onClick={() => onDisplayModeChange('stacked')}
-              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded transition-all cursor-pointer ${
-                displayMode === 'stacked'
-                  ? isDark
-                    ? 'bg-[#20222b] text-[#eae8e3] font-medium shadow-sm'
-                    : 'bg-[#ebe8df] text-[#18191e] font-semibold'
-                  : isDark
-                  ? 'text-[#707280] hover:text-[#c4c2ba]'
-                  : 'text-[#828492] hover:text-[#22242e]'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              <span>画册叠放</span>
-            </button>
+            {([
+              ['shelf', '立架并列', Columns3],
+              ['stacked', '画册叠放', Layers]
+            ] as const).map(([value, label, Icon]) => (
+              <button key={value} type="button" aria-pressed={displayMode === value}
+                onClick={() => {
+                  if (value === 'stacked') setSorting(false);
+                  onStackPageChange(0);
+                  setSearchLimit(searchPageSize);
+                  if (searchOpen) {
+                    onSearch('');
+                    onSearchOpenChange(false);
+                  }
+                  onDisplayModeChange(value);
+                }}
+                className={displayButton(value)}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                <span className="text-xs sm:text-sm">{label}</span>
+              </button>
+            ))}
           </div>
         </div>
       </header>
 
-      {/* Main Exhibition Hall Stage (Books Centerpiece) */}
-      <main className={`my-auto py-6 md:py-8 flex flex-col items-center justify-center relative ${
-        displayMode === 'shelf' ? 'lg:w-[min(93.5rem,calc(100vw-3rem))] lg:self-center' : ''
-      }`}>
-        {/* Soft overhead gallery spotlight gradient */}
-        <div
-          className={`absolute -top-16 w-3/4 h-72 blur-3xl pointer-events-none ${
-            isDark
-              ? 'bg-gradient-to-b from-[#1c1e28]/50 via-transparent to-transparent'
-              : 'bg-gradient-to-b from-[#e8e4d8]/70 via-transparent to-transparent'
-          }`}
-        />
-
-        <div data-shelf-scroll={displayMode === 'shelf' ? '' : undefined} className={displayMode === 'shelf'
-          ? 'shelf-row w-full flex items-end gap-6 sm:gap-10 lg:gap-14 px-4 pt-8 pb-2 z-10 overflow-x-auto no-scrollbar'
-          : 'relative grid place-content-center w-full py-10 z-10'
-        }>
-          {albums.map((album, idx) => (
-            <ThreeDimensionalBook
-              key={album.id}
-              album={album}
-              theme={theme}
-              displayMode={displayMode}
-              stackIndex={idx}
-              totalStacked={albums.length}
-              onOpen={() => onSelectAlbum(album)}
-            />
-          ))}
-        </div>
-
-        {/* Solid Architectural Shelf Beam Plinth */}
-        {displayMode === 'shelf' && (
-          <div className="w-full max-w-5xl lg:max-w-[calc(100%-4rem)] relative mt-4">
-            <div
-              className={`w-full h-4 border-t border-b shadow-2xl flex items-center px-6 ${
-                isDark
-                  ? 'bg-[#14151b] border-[#2a2c38] border-b-[#090a0d]'
-                  : 'bg-[#ded8cb] border-[#cfc8b8] border-b-[#b8b09d]'
-              }`}
+      <div className="relative z-30 mt-3 flex flex-wrap items-center gap-2">
+        <button ref={searchButton} type="button" aria-expanded={searchOpen}
+          aria-controls="shelf-search" className={toolbarButton} onClick={() => {
+            if (searchOpen) closeSearch();
+            else {
+              setSorting(false);
+              setSearchLimit(searchPageSize);
+              onSearchOpenChange(true);
+            }
+          }}>
+          <Search className="h-4 w-4" aria-hidden="true" />搜索
+        </button>
+        {!searchOpen && (
+          <button type="button" aria-pressed={sorting} className={toolbarButton} onClick={() => {
+            if (displayMode === 'stacked') onDisplayModeChange('shelf');
+            setSorting(!sorting);
+          }}>
+            <Grip className="h-4 w-4" aria-hidden="true" />{sorting ? '完成排序' : '排序书籍'}
+          </button>
+        )}
+        {canSort && <p className="text-xs opacity-75">拖动书籍换位置，松手保存。</p>}
+        <AnimatePresence initial={false}>
+          {searchOpen && (
+            <motion.div id="shelf-search" initial={reduceMotion ? false : { opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
+              className="archive-control absolute left-0 top-full z-10 mt-2 flex w-[min(23rem,100%)] items-center gap-2 rounded-lg border p-2 shadow-xl"
             >
+              <Search className="ml-2 h-4 w-4 shrink-0" aria-hidden="true" />
+              <input ref={searchInput} type="search" aria-label="搜索专辑、曲目或作者"
+                placeholder="搜索专辑、曲目或作者" value={search}
+                onChange={(event) => {
+                  setSearchLimit(searchPageSize);
+                  onSearch(event.currentTarget.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape') return;
+                  event.preventDefault();
+                  closeSearch();
+                }}
+                className="min-w-0 flex-1 rounded bg-transparent p-1 text-sm placeholder:text-current placeholder:opacity-60"
+              />
+              <button type="button" onClick={closeSearch} aria-label="关闭搜索" className="rounded p-2 hover:bg-[#c5a059]/20">
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Main Exhibition Hall Stage (Books Centerpiece) */}
+        <motion.section key={mode} aria-label="典藏书架" data-shelf-mode={mode}
+          initial={reduceMotion ? false : { opacity: 0, y: mode === 'search' ? 10 : 18, scale: 0.992 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: reduceMotion ? 0 : 0.23, ease: [0.22, 0.72, 0.25, 1] }}
+          className={`my-auto py-6 md:py-8 flex flex-col items-center justify-center relative ${
+          mode === 'shelf' ? 'lg:w-[min(93.5rem,calc(100vw-3rem))] lg:self-center' : mode === 'search' ? '!mt-0 w-full' : ''
+        }`}>
+          {/* Soft overhead gallery spotlight gradient */}
+          <div
+            className={`absolute -top-16 w-3/4 h-72 blur-3xl pointer-events-none ${
+              isDark
+                ? 'bg-gradient-to-b from-[#1c1e28]/50 via-transparent to-transparent'
+                : 'bg-gradient-to-b from-[#e8e4d8]/70 via-transparent to-transparent'
+            }`}
+          />
+
+          {mode === 'search' ? (
+            <div className="relative z-10 w-full">
+              {query && <p role="status" className="mb-3 text-sm opacity-75">找到 {results.length} 部藏品</p>}
+              {results.length === 0 && <p className="py-8 text-center text-sm opacity-75">没有找到匹配的专辑或曲目。</p>}
+              <ul className="space-y-2">
+                {results.slice(0, searchLimit).map(({ album, tracks }) => (
+                  <li key={album.id} className="archive-control rounded-lg border">
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg p-2">
+                      <button type="button" onClick={() => onSelectAlbum(album)} aria-label={`翻开《${album.title}》`}
+                        className="flex min-w-0 flex-1 items-center gap-3 rounded p-1 text-left hover:bg-[#c5a059]/10">
+                        <img data-cover={`shelf-${album.id}`} src={album.artwork} alt="" loading="lazy" className="h-12 w-9 shrink-0 rounded object-cover" />
+                        <span className="min-w-0">
+                          <span className="block truncate font-serif font-semibold">{album.title}</span>
+                          <span className="block truncate text-xs opacity-70">{album.artist} · {album.tracks.length} 首</span>
+                        </span>
+                      </button>
+                      <button type="button" onClick={() => onPlayAlbum(album)} aria-label={`播放《${album.title}》`}
+                        className="rounded p-2 hover:bg-[#c5a059]/20" title="直接播放">
+                        <Play className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                    {!!tracks.length && (
+                      <ul className="border-t border-current/15 px-3 py-1">
+                        {tracks.map((track) => (
+                          <li key={track.id} className="flex items-center gap-2 text-sm">
+                            <button type="button" aria-label={`播放曲目《${track.title}》`} onClick={() => onPlayTrack(track)}
+                              className="flex min-w-0 flex-1 items-center gap-3 rounded p-2 text-left hover:bg-[#c5a059]/15">
+                              <Play className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                              <span className="truncate">{track.title}</span>
+                              <span className="ml-auto font-mono text-xs opacity-70">{track.duration}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {results.length > searchLimit && (
+                <button type="button" className={`${toolbarButton} mt-3`} onClick={() => setSearchLimit(searchLimit + searchPageSize)}>
+                  显示更多藏品
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div ref={rowRef} data-shelf-scroll={mode === 'shelf' ? '' : undefined} onScroll={updateScrollEdges}
+                className={mode === 'shelf'
+                  ? 'shelf-row w-full flex items-end gap-6 sm:gap-10 lg:gap-14 px-4 pt-8 pb-2 z-10 overflow-x-auto no-scrollbar'
+                  : 'relative grid place-content-center w-full py-10 z-10'}
+              >
+                {displayedAlbums.map(({ album }, index) => (
+                  <ThreeDimensionalBook
+                    key={album.id}
+                    album={album}
+                    displayMode={mode}
+                    stackIndex={index}
+                    totalStacked={displayedAlbums.length}
+                    onOpen={() => onSelectAlbum(album)}
+                    onPlay={() => onPlayAlbum(album)}
+                    sortControls={sortControls(album, index)}
+                    dragHandlers={canSort ? handle(album.id) : undefined}
+                    dropClass={dropClass(album.id)}
+                  />
+                ))}
+              </div>
+              {mode === 'stacked' && stackPageCount > 1 && (
+                <nav aria-label="画册叠放分页" className="relative z-20 flex items-center gap-3 text-xs">
+                  <button type="button" disabled={stackPage === 0} onClick={() => onStackPageChange(stackPage - 1)}
+                    className={`${toolbarButton} disabled:opacity-40`}>上一组</button>
+                  <span>{stackPage + 1} / {stackPageCount}</span>
+                  <button type="button" disabled={stackPage + 1 === stackPageCount} onClick={() => onStackPageChange(stackPage + 1)}
+                    className={`${toolbarButton} disabled:opacity-40`}>下一组</button>
+                </nav>
+              )}
+              {mode === 'shelf' && ([[-1, scrollEdges.left, ChevronLeft], [1, scrollEdges.right, ChevronRight]] as const)
+                .map(([direction, visible, Icon]) => visible && (
+                  <button key={direction} type="button" onClick={() => scrollShelf(direction)}
+                    aria-label={direction === -1 ? '向左浏览书架' : '向右浏览书架'}
+                    className={`archive-control absolute top-1/2 z-50 rounded-full border p-2 shadow-lg ${direction === -1 ? '-left-3' : '-right-3'}`}>
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                ))}
+            </>
+          )}
+
+          {/* Solid Architectural Shelf Beam Plinth */}
+          {mode === 'shelf' && (
+            <div className="w-full max-w-5xl lg:max-w-[calc(100%-4rem)] relative mt-4">
               <div
-                className={`w-full h-[1px] ${
+                className={`w-full h-4 border-t border-b shadow-2xl flex items-center px-6 ${
                   isDark
-                    ? 'bg-gradient-to-r from-transparent via-[#3a3d4d] to-transparent opacity-60'
-                    : 'bg-gradient-to-r from-transparent via-[#ffffff] to-transparent opacity-70'
+                    ? 'bg-[#14151b] border-[#2a2c38] border-b-[#090a0d]'
+                    : 'bg-[#ded8cb] border-[#cfc8b8] border-b-[#b8b09d]'
+                }`}
+              >
+                <div
+                  className={`w-full h-[1px] ${
+                    isDark
+                      ? 'bg-gradient-to-r from-transparent via-[#3a3d4d] to-transparent opacity-60'
+                      : 'bg-gradient-to-r from-transparent via-[#ffffff] to-transparent opacity-70'
+                  }`}
+                />
+              </div>
+              <div
+                className={`w-full h-14 bg-gradient-to-b ${
+                  isDark
+                    ? 'from-black/80 to-transparent'
+                    : 'from-black/15 to-transparent'
                 }`}
               />
             </div>
-            <div
-              className={`w-full h-14 bg-gradient-to-b ${
-                isDark
-                  ? 'from-black/80 to-transparent'
-                  : 'from-black/15 to-transparent'
-              }`}
-            />
-          </div>
-        )}
-      </main>
+          )}
+        </motion.section>
 
       {/* Minimalist Footnote Specifications - ENLARGED */}
       <footer
@@ -193,16 +435,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
           <span>•</span>
           <span>路径：/workspace/本地音乐库</span>
         </div>
-        <div
-          className={`flex items-center space-x-2 font-serif text-xs md:text-sm ${
-            isDark ? 'text-[#9294a5]' : 'text-[#4c4e5c]'
-          }`}
-        >
-          <Compass
-            className={`w-4 h-4 ${isDark ? 'text-[#c5a059]' : 'text-[#9e7d3b]'}`}
-          />
-          <span>点选书籍以 3D 展册翻开 · 键盘空格暂停/播放</span>
-        </div>
+        <span>点击封面翻书 · 空格暂停或播放</span>
       </footer>
     </div>
   );

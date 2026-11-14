@@ -21,6 +21,7 @@ interface QuietPlayerProps {
   onPrev: () => void;
   onNext: () => void;
   onVolumeChange: (vol: number) => void;
+  error: string;
 }
 
 const formatSeconds = (seconds: number) => {
@@ -46,7 +47,8 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   onSeek,
   onPrev,
   onNext,
-  onVolumeChange
+  onVolumeChange,
+  error
 }) => {
   const isDark = isVideoMode || theme === 'dark';
 
@@ -120,7 +122,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
         </div>
 
         <div className="contents md:flex md:flex-col md:items-center md:space-y-1">
-          <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
+          <div className="flex items-center gap-0.5 sm:gap-2 lg:gap-3">
             <button
               type="button"
               onClick={onPrev}
@@ -195,7 +197,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
                 className="flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-white/20 px-2 text-xs text-white/90 transition-colors hover:border-[#e2bd77]/50 hover:bg-[#e2bd77]/15 hover:text-[#f0d49b]"
               >
                 <Maximize2 className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">清屏</span>
+                <span className="hidden lg:inline">清屏</span>
               </button>
             )}
             {pvBackgroundMessage && <span className="sr-only" role="status">{pvBackgroundMessage}</span>}
@@ -230,7 +232,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
           </div>
         </div>
 
-        <div className="hidden md:flex items-center justify-end gap-3">
+        <div className="col-span-2 flex min-w-0 items-center justify-end gap-2 md:col-span-1">
           <button
             type="button"
             onClick={() => onVolumeChange(volume === 0 ? 0.8 : 0)}
@@ -256,10 +258,11 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
             value={volume}
             aria-label="音量"
             onChange={(e) => onVolumeChange(e.currentTarget.valueAsNumber)}
-            className="quiet-player-range w-24 max-w-full"
+            className="quiet-player-range w-16 max-w-full lg:w-24"
             style={{ '--player-progress': `${volume * 100}%` } as React.CSSProperties}
           />
         </div>
+        {error && <p className="col-span-full text-xs text-red-500" role="alert">{error}</p>}
       </div>
     </footer>
   );

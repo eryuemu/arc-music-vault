@@ -339,10 +339,9 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
                   return (
                     <motion.div
                       key={track.id}
-                      onClick={() => onPlayTrack(track)}
                       whileHover={{ x: 3 }}
                       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                      className={`group flex items-center justify-between px-3.5 py-2 rounded transition-all cursor-pointer border relative overflow-hidden ${
+                      className={`group flex items-center justify-between px-2 sm:px-3.5 py-1 rounded transition-colors border relative overflow-hidden ${
                         isSelected
                           ? isDark
                             ? 'bg-[#1b1c26] text-[#ffffff] font-medium border-[#36394c] shadow-sm'
@@ -362,7 +361,9 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
                         />
                       )}
 
-                      <div className="flex items-center space-x-3 overflow-hidden pl-1">
+                      <button type="button" aria-label={`播放曲目《${track.title}》`}
+                        onClick={() => onPlayTrack(track)}
+                        className="flex min-w-0 flex-1 items-center space-x-2 overflow-hidden rounded py-1 pl-1 text-left outline-offset-[-2px] sm:space-x-3">
                         <span
                           className={`font-mono text-xs w-6 font-medium ${
                             isSelected
@@ -435,9 +436,9 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
                             作编曲：{track.composer}
                           </p>
                         </div>
-                      </div>
+                      </button>
 
-                      <div className="flex items-center space-x-2.5 pl-2 flex-shrink-0">
+                      <div className="flex shrink-0 items-center gap-0.5 pl-1 sm:gap-1 sm:pl-2">
                         {!isThisPlaying && (
                           <span
                             className={`opacity-0 group-hover:opacity-100 transition-opacity ${
@@ -448,7 +449,7 @@ export const BookSpreadView: React.FC<BookSpreadViewProps> = ({
                           </span>
                         )}
                         <span
-                          className={`font-mono text-xs ${
+                          className={`mr-0.5 hidden font-mono text-xs min-[430px]:inline ${
                             isDark ? 'text-[#787a8b]' : 'text-[#444654]'
                           }`}
                         >
