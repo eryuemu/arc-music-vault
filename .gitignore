@@ -27,3 +27,6 @@ dist-ssr
 # Local AI Context & Design Prompts (Excluded from git push)
 design-context/
 
+# Local Developer Notes & Roadmap (Excluded from git tracking)
+TODO.md
+
