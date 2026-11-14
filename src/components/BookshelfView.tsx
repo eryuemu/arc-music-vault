@@ -170,7 +170,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
                 isDark ? 'text-[#a2a4b3]' : 'text-[#6e7080]'
               }`}
             >
-              LOCAL ARCHIVE // 本地视听藏书阁
+              RESONANCE ARCHIVE // 离线视听典藏馆
             </span>
             <span
               className={`hidden sm:inline-block text-xs font-mono ml-1 px-2 py-0.5 rounded-full border ${
@@ -187,7 +187,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
               isDark ? 'text-[#eae8e3]' : 'text-[#18191e]'
             }`}
           >
-            术界与独立概念典藏馆
+            共鸣视听典藏馆
           </h1>
         </div>
 
