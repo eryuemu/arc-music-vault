@@ -30,3 +30,4 @@ export type ViewMode = 'shelf' | 'spread' | 'stage';
 export type ShelfDisplayMode = 'shelf' | 'stacked';
 export type ThemeMode = 'dark' | 'light';
 export type VideoStatus = 'loading' | 'ready' | 'error';
+export type PlaybackMode = 'all' | 'one' | 'shuffle';

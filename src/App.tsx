@@ -22,9 +22,11 @@ export const App: React.FC = () => {
     const known = new Map(LOCAL_ARCHIVE.map((album) => [album.id, album]));
     return [...albumOrder.map((id) => known.get(id)!), ...LOCAL_ARCHIVE.filter((album) => !albumOrder.includes(album.id))];
   }, [albumOrder]);
-  const playback = usePlayback(LOCAL_ARCHIVE);
+  const playback = usePlayback(albums);
   const { audioRef, togglePlay: handleTogglePlay } = playback;
-  const { track: currentTrack, album: playingAlbum } = trackIndex.get(playback.trackId)!;
+  const activeRecord = trackIndex.get(playback.trackId) ?? { album: LOCAL_ARCHIVE[0], track: LOCAL_ARCHIVE[0].tracks[0] };
+  const currentTrack = activeRecord.track;
+  const playingAlbum = activeRecord.album;
   const [notice, setNotice] = useState('');
   const noticeTimer = useRef<ReturnType<typeof setTimeout>>();
   const [search, setSearch] = useState('');
@@ -93,10 +95,16 @@ export const App: React.FC = () => {
   useLayoutEffect(() => setStageMedia('image'), [currentTrack.id]);
 
   const playTrack = playback.playTrack;
+  const togglePlayTrack = playback.togglePlayTrack;
 
   const playAlbum = (album: Album) => {
-    const [firstTrack] = album.tracks;
-    if (firstTrack) playTrack(firstTrack);
+    const isCurrentInAlbum = album.tracks.some((t) => t.id === currentTrack.id);
+    if (isCurrentInAlbum) {
+      handleTogglePlay();
+    } else {
+      const [firstTrack] = album.tracks;
+      if (firstTrack) playTrack(firstTrack);
+    }
   };
 
   useLayoutEffect(() => {
@@ -229,11 +237,45 @@ export const App: React.FC = () => {
       if (e.code === 'Space' && !e.repeat && (isPvFocus || !focusedButton)) {
         e.preventDefault();
         handleTogglePlay();
+        return;
+      }
+      if (e.key === 'ArrowLeft' && !e.repeat) {
+        e.preventDefault();
+        const audio = audioRef.current;
+        if (audio) {
+          playback.seek(audio.currentTime - 5);
+          report('快退 5 秒');
+        }
+        return;
+      }
+      if (e.key === 'ArrowRight' && !e.repeat) {
+        e.preventDefault();
+        const audio = audioRef.current;
+        if (audio) {
+          playback.seek(audio.currentTime + 5);
+          report('快进 5 秒');
+        }
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        playback.setVolume(playback.volume + 0.05);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        playback.setVolume(playback.volume - 0.05);
+        return;
+      }
+      if ((e.key === 'm' || e.key === 'M') && !e.repeat) {
+        e.preventDefault();
+        playback.toggleMute();
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTogglePlay, currentView, isPvFocus, returnToSpread]);
+  }, [handleTogglePlay, currentView, isPvFocus, returnToSpread, audioRef, playback]);
 
   const isDark = theme === 'dark';
 
@@ -294,7 +336,7 @@ export const App: React.FC = () => {
               }}
               onMoveAlbum={moveAlbum}
               onPlayAlbum={playAlbum}
-              onPlayTrack={playTrack}
+              onPlayTrack={togglePlayTrack}
               theme={theme}
               displayMode={shelfDisplayMode}
               onDisplayModeChange={(mode) => {
@@ -317,7 +359,7 @@ export const App: React.FC = () => {
               opening={bookOpening}
               closing={bookClosing}
               onToggleTheme={toggleTheme}
-              onPlayTrack={playTrack}
+              onPlayTrack={togglePlayTrack}
               onOpenStage={openStage}
               onCloseBook={() => setBookClosing(true)}
               onBackToShelf={returnToShelf}
@@ -345,9 +387,16 @@ export const App: React.FC = () => {
             currentAlbum={playingAlbum}
             onOpenCover={currentView === 'shelf' ? () => void openBook(playingAlbum, 'player-cover') : undefined}
             isPlaying={playback.isPlaying}
+            isBuffering={playback.isBuffering}
             currentTime={playback.currentTime}
             duration={playback.duration}
             volume={playback.volume}
+            mode={playback.mode}
+            onCycleMode={() => {
+              const nextMode = playback.cycleMode();
+              const label = nextMode === 'one' ? '单曲循环' : nextMode === 'shuffle' ? '随机播放' : '全馆连播';
+              report(`播放模式：${label}`);
+            }}
             theme={theme}
             isVideoMode={isBackgroundVisible || isStageVideoMode}
             pvBackgroundStatus={backgroundVideoUrl ? videoStatus : undefined}
@@ -360,6 +409,7 @@ export const App: React.FC = () => {
             onPrev={() => playback.step(-1)}
             onNext={() => playback.step(1)}
             onVolumeChange={playback.setVolume}
+            onToggleMute={playback.toggleMute}
             error={playback.error}
           />
         </div>

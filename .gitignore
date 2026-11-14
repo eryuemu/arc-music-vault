@@ -23,3 +23,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local AI Context & Design Prompts (Excluded from git push)
+design-context/
+

@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Layers, Columns3, Sun, Moon, Search, X, Grip, GripVertical, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { Layers, Columns3, Sun, Moon, Search, X, GripVertical, ChevronLeft, ChevronRight, Play, ArrowUpDown, Check } from 'lucide-react';
 import { ThreeDimensionalBook } from './ThreeDimensionalBook';
 import { Album, ShelfDisplayMode, ThemeMode, Track } from '../types';
 import { useShelfDrag } from './useShelfDrag';
@@ -154,7 +154,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
     <div className="flex-1 flex flex-col justify-between px-6 md:px-14 lg:px-20 py-4 md:py-6 w-full max-w-7xl mx-auto select-none">
       {/* Top Architectural Gallery Header (No Sidebar!) */}
       <header
-        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b transition-colors ${
+        className={`flex flex-col md:flex-row md:items-end justify-between gap-4 mb-5 pb-4 border-b transition-colors ${
           isDark ? 'border-[#1f212a]' : 'border-[#dedad0]'
         }`}
       >
@@ -172,6 +172,15 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
             >
               LOCAL ARCHIVE // 本地视听藏书阁
             </span>
+            <span
+              className={`hidden sm:inline-block text-xs font-mono ml-1 px-2 py-0.5 rounded-full border ${
+                isDark
+                  ? 'border-[#292b38] text-[#86889b] bg-[#121318]'
+                  : 'border-[#dfdbd0] text-[#767888] bg-[#f7f5ef]'
+              }`}
+            >
+              共 {albums.length} 卷典藏
+            </span>
           </div>
           <h1
             className={`text-3xl md:text-4xl lg:text-5xl font-serif font-normal tracking-wide ${
@@ -182,12 +191,138 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
           </h1>
         </div>
 
-        {/* Right Controls: Theme Toggle & Display Mode Switcher */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3.5">
+        {/* Right Controls: Unified Collection Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          {/* 搜索控制 (Search Control - Expandable in place) */}
+          {searchOpen ? (
+            <div
+              id="shelf-search"
+              className={`flex items-center rounded-lg border px-2.5 py-1.5 text-sm transition-all shadow-sm ${
+                isDark
+                  ? 'bg-[#14151b] border-[#c5a059]/60 text-[#dedbd2]'
+                  : 'bg-[#ffffff] border-[#9e7d3b]/60 text-[#1a1b22]'
+              }`}
+            >
+              <Search className="h-4 w-4 text-[#c5a059] shrink-0 mr-2" aria-hidden="true" />
+              <input
+                ref={searchInput}
+                type="search"
+                aria-label="搜索专辑、曲目或作者"
+                placeholder="搜索画册、曲目或创作者…"
+                value={search}
+                onChange={(event) => {
+                  setSearchLimit(searchPageSize);
+                  onSearch(event.currentTarget.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeSearch();
+                  }
+                }}
+                className="w-36 sm:w-48 md:w-56 bg-transparent text-sm outline-none placeholder:text-current placeholder:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={closeSearch}
+                aria-label="关闭搜索"
+                className="rounded p-1 text-current/60 hover:text-current hover:bg-[#c5a059]/20 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <button
+              ref={searchButton}
+              type="button"
+              aria-expanded={false}
+              onClick={() => {
+                setSorting(false);
+                setSearchLimit(searchPageSize);
+                onSearchOpenChange(true);
+              }}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg border text-sm transition-all cursor-pointer ${
+                isDark
+                  ? 'bg-[#14151b] hover:bg-[#20222a] text-[#dedbd2] border-[#252733]'
+                  : 'bg-[#ffffff] hover:bg-[#eae8df] text-[#1a1b22] border-[#d4d0c5] shadow-sm'
+              }`}
+              title="搜索画册、曲目或创作者 (Ctrl+F)"
+            >
+              <Search className="h-4 w-4 text-[#c5a059]" aria-hidden="true" />
+              <span className="hidden sm:inline">搜索</span>
+            </button>
+          )}
+
+          {/* 排序书籍 (Sort Books Switcher) */}
+          {!searchOpen && (
+            <button
+              type="button"
+              aria-pressed={sorting}
+              onClick={() => {
+                if (displayMode === 'stacked') onDisplayModeChange('shelf');
+                setSorting(!sorting);
+              }}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg border text-sm transition-all cursor-pointer ${
+                sorting
+                  ? 'border-[#c5a059] bg-[#c5a059]/15 text-[#c5a059] font-medium shadow-sm'
+                  : isDark
+                    ? 'bg-[#14151b] hover:bg-[#20222a] text-[#dedbd2] border-[#252733]'
+                    : 'bg-[#ffffff] hover:bg-[#eae8df] text-[#1a1b22] border-[#d4d0c5] shadow-sm'
+              }`}
+              title={sorting ? '点击完成排序' : '拖动书籍调整陈列次序'}
+            >
+              {sorting ? (
+                <>
+                  <Check className="h-4 w-4 text-[#c5a059]" aria-hidden="true" />
+                  <span>完成排序</span>
+                </>
+              ) : (
+                <>
+                  <ArrowUpDown className="h-4 w-4 text-[#c5a059]" aria-hidden="true" />
+                  <span className="hidden sm:inline">排序书籍</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Display Mode Switcher (立架并列 vs 画册叠放) */}
+          <div
+            className={`flex items-center space-x-1 p-1 rounded-lg border text-sm font-mono ${
+              isDark
+                ? 'bg-[#131418] border-[#22242e]'
+                : 'bg-[#ffffff] border-[#d4d0c5] shadow-sm'
+            }`}
+          >
+            {([
+              ['shelf', '立架并列', Columns3],
+              ['stacked', '画册叠放', Layers]
+            ] as const).map(([value, label, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={displayMode === value}
+                onClick={() => {
+                  if (value === 'stacked') setSorting(false);
+                  onStackPageChange(0);
+                  setSearchLimit(searchPageSize);
+                  if (searchOpen) {
+                    onSearch('');
+                    onSearchOpenChange(false);
+                  }
+                  onDisplayModeChange(value);
+                }}
+                className={displayButton(value)}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                <span className="text-xs sm:text-sm">{label}</span>
+              </button>
+            ))}
+          </div>
+
           {/* 黑白切换按钮 (Light / Dark Monochrome Toggle) */}
           <button
             onClick={onToggleTheme}
-            className={`flex items-center space-x-2.5 px-4 py-2 rounded-lg border text-sm font-serif transition-all cursor-pointer ${
+            className={`flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg border text-sm font-serif transition-all cursor-pointer ${
               isDark
                 ? 'bg-[#14151b] hover:bg-[#20222a] text-[#dedbd2] border-[#252733]'
                 : 'bg-[#ffffff] hover:bg-[#eae8df] text-[#1a1b22] border-[#d4d0c5] shadow-sm'
@@ -206,89 +341,18 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
               </>
             )}
           </button>
-
-          {/* Display Mode Switcher (立架并列 vs 画册叠放) */}
-          <div
-            className={`flex items-center space-x-1 p-1 rounded-lg border text-sm font-mono ${
-              isDark
-                ? 'bg-[#131418] border-[#22242e]'
-                : 'bg-[#ffffff] border-[#d4d0c5] shadow-sm'
-            }`}
-          >
-            {([
-              ['shelf', '立架并列', Columns3],
-              ['stacked', '画册叠放', Layers]
-            ] as const).map(([value, label, Icon]) => (
-              <button key={value} type="button" aria-pressed={displayMode === value}
-                onClick={() => {
-                  if (value === 'stacked') setSorting(false);
-                  onStackPageChange(0);
-                  setSearchLimit(searchPageSize);
-                  if (searchOpen) {
-                    onSearch('');
-                    onSearchOpenChange(false);
-                  }
-                  onDisplayModeChange(value);
-                }}
-                className={displayButton(value)}
-              >
-                <Icon className="h-4 w-4" aria-hidden="true" />
-                <span className="text-xs sm:text-sm">{label}</span>
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 
-      <div className="relative z-30 mt-3 flex flex-wrap items-center gap-2">
-        <button ref={searchButton} type="button" aria-expanded={searchOpen}
-          aria-controls="shelf-search" className={toolbarButton} onClick={() => {
-            if (searchOpen) closeSearch();
-            else {
-              setSorting(false);
-              setSearchLimit(searchPageSize);
-              onSearchOpenChange(true);
-            }
-          }}>
-          <Search className="h-4 w-4" aria-hidden="true" />搜索
-        </button>
-        {!searchOpen && (
-          <button type="button" aria-pressed={sorting} className={toolbarButton} onClick={() => {
-            if (displayMode === 'stacked') onDisplayModeChange('shelf');
-            setSorting(!sorting);
-          }}>
-            <Grip className="h-4 w-4" aria-hidden="true" />{sorting ? '完成排序' : '排序书籍'}
-          </button>
-        )}
-        {canSort && <p className="text-xs opacity-75">拖动书籍换位置，松手保存。</p>}
-        <AnimatePresence initial={false}>
-          {searchOpen && (
-            <motion.div id="shelf-search" initial={reduceMotion ? false : { opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
-              transition={{ duration: reduceMotion ? 0 : 0.2 }}
-              className="archive-control absolute left-0 top-full z-10 mt-2 flex w-[min(23rem,100%)] items-center gap-2 rounded-lg border p-2 shadow-xl"
-            >
-              <Search className="ml-2 h-4 w-4 shrink-0" aria-hidden="true" />
-              <input ref={searchInput} type="search" aria-label="搜索专辑、曲目或作者"
-                placeholder="搜索专辑、曲目或作者" value={search}
-                onChange={(event) => {
-                  setSearchLimit(searchPageSize);
-                  onSearch(event.currentTarget.value);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape') return;
-                  event.preventDefault();
-                  closeSearch();
-                }}
-                className="min-w-0 flex-1 rounded bg-transparent p-1 text-sm placeholder:text-current placeholder:opacity-60"
-              />
-              <button type="button" onClick={closeSearch} aria-label="关闭搜索" className="rounded p-2 hover:bg-[#c5a059]/20">
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      {/* Sorting Active Banner */}
+      {canSort && (
+        <div className="flex items-center justify-center -mt-2 mb-3">
+          <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-serif border border-[#c5a059]/40 bg-[#c5a059]/10 text-[#c5a059] shadow-sm">
+            <ArrowUpDown className="w-3.5 h-3.5" aria-hidden="true" />
+            按住书本拖拽以调整陈列顺序，松开自动保存
+          </span>
+        </div>
+      )}
 
       {/* Main Exhibition Hall Stage (Books Centerpiece) */}
         <motion.section key={mode} aria-label="典藏书架" data-shelf-mode={mode}

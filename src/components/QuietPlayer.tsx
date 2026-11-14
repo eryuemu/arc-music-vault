@@ -1,6 +1,6 @@
-import React from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film, Maximize2 } from 'lucide-react';
-import { Track, Album, ThemeMode, VideoStatus } from '../types';
+import React, { useState } from 'react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Film, Maximize2, Repeat, Repeat1, Shuffle } from 'lucide-react';
+import { Track, Album, ThemeMode, VideoStatus, PlaybackMode } from '../types';
 import './QuietPlayer.css';
 
 interface QuietPlayerProps {
@@ -8,9 +8,12 @@ interface QuietPlayerProps {
   currentAlbum: Album;
   onOpenCover?: () => void;
   isPlaying: boolean;
+  isBuffering?: boolean;
   currentTime: number;
   duration: number;
   volume: number;
+  mode?: PlaybackMode;
+  onCycleMode?: () => void;
   theme?: ThemeMode;
   isVideoMode?: boolean;
   pvBackgroundStatus?: VideoStatus;
@@ -21,6 +24,7 @@ interface QuietPlayerProps {
   onPrev: () => void;
   onNext: () => void;
   onVolumeChange: (vol: number) => void;
+  onToggleMute?: () => void;
   error: string;
 }
 
@@ -35,9 +39,12 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   currentAlbum,
   onOpenCover,
   isPlaying,
+  isBuffering = false,
   currentTime,
   duration,
   volume,
+  mode = 'all',
+  onCycleMode,
   theme = 'dark',
   isVideoMode = false,
   pvBackgroundStatus,
@@ -48,9 +55,13 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   onPrev,
   onNext,
   onVolumeChange,
+  onToggleMute,
   error
 }) => {
   const isDark = isVideoMode || theme === 'dark';
+
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubTime, setScrubTime] = useState(0);
 
   if (!currentTrack) return null;
 
@@ -58,10 +69,14 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
   const elapsed = canSeek && Number.isFinite(currentTime)
     ? Math.min(duration, Math.max(0, currentTime))
     : 0;
-  const elapsedLabel = formatSeconds(elapsed);
+
+  const displayTime = isScrubbing ? scrubTime : elapsed;
+  const displayLabel = formatSeconds(displayTime);
   const durationLabel = canSeek ? formatSeconds(duration) : currentTrack.duration;
   const playLabel = isPlaying ? '暂停' : '播放';
   const muteLabel = volume === 0 ? '取消静音' : '静音';
+  const modeLabel = mode === 'one' ? '单曲循环' : mode === 'shuffle' ? '随机播放' : '全馆连播';
+
   const pvBackgroundActive = pvBackgroundStatus !== undefined;
   const pvBackgroundMessage = pvBackgroundStatus === 'error' ? 'PV 背景加载失败'
     : pvBackgroundStatus === 'loading' ? '正在载入 PV 背景…' : '';
@@ -123,6 +138,28 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
 
         <div className="contents md:flex md:flex-col md:items-center md:space-y-1">
           <div className="flex items-center gap-0.5 sm:gap-2 lg:gap-3">
+            {onCycleMode && (
+              <button
+                type="button"
+                onClick={onCycleMode}
+                aria-label={`切换播放模式：当前为${modeLabel}`}
+                title={`播放模式：${modeLabel} (点击切换)`}
+                className={`p-1.5 transition-colors cursor-pointer rounded ${
+                  isVideoMode ? 'text-white/80 hover:text-white' : isDark
+                    ? 'text-[#9698a8] hover:text-white'
+                    : 'text-[#626472] hover:text-[#18191e]'
+                }`}
+              >
+                {mode === 'one' ? (
+                  <Repeat1 className="w-4 h-4 text-[#c5a059]" />
+                ) : mode === 'shuffle' ? (
+                  <Shuffle className="w-4 h-4 text-[#c5a059]" />
+                ) : (
+                  <Repeat className="w-4 h-4" />
+                )}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onPrev}
@@ -132,7 +169,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
                   ? 'text-[#9698a8] hover:text-white'
                   : 'text-[#626472] hover:text-[#18191e]'
               }`}
-              title="上一曲"
+              title="上一曲 (播放超3秒回跳开头)"
             >
               <SkipBack className="w-4 h-4" />
             </button>
@@ -148,7 +185,9 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
               }`}
               title={`${playLabel} (空格)`}
             >
-              {isPlaying ? (
+              {isBuffering ? (
+                <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : isPlaying ? (
                 <Pause className="w-4 h-4 fill-current" />
               ) : (
                 <Play className="w-4 h-4 fill-current ml-0.5" />
@@ -208,17 +247,46 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
               isVideoMode ? 'text-white/90' : isDark ? 'text-[#a2a4b3]' : 'text-[#646675]'
             }`}
           >
-            <span className="min-w-[5ch] text-right">{elapsedLabel}</span>
+            <span className="min-w-[5ch] text-right">{displayLabel}</span>
             <input
               type="range"
               min={0}
               max={canSeek ? duration : 0}
               step="any"
-              value={elapsed}
+              value={displayTime}
               disabled={!canSeek}
               aria-label="播放进度"
-              aria-valuetext={`${elapsedLabel} / ${durationLabel}`}
-              onChange={(e) => onSeek(e.currentTarget.valueAsNumber)}
+              aria-valuetext={`${displayLabel} / ${durationLabel}`}
+              onPointerDown={(e) => {
+                if (!canSeek) return;
+                setIsScrubbing(true);
+                setScrubTime(e.currentTarget.valueAsNumber);
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {}
+              }}
+              onPointerMove={(e) => {
+                if (isScrubbing) {
+                  setScrubTime(e.currentTarget.valueAsNumber);
+                }
+              }}
+              onPointerUp={(e) => {
+                if (isScrubbing) {
+                  setIsScrubbing(false);
+                  onSeek(scrubTime);
+                  try {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  } catch {}
+                }
+              }}
+              onChange={(e) => {
+                const val = e.currentTarget.valueAsNumber;
+                if (isScrubbing) {
+                  setScrubTime(val);
+                } else {
+                  onSeek(val);
+                }
+              }}
               onKeyDown={(e) => {
                 const offset = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5 }[e.key];
                 if (offset === undefined) return;
@@ -226,7 +294,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
                 onSeek(Math.min(duration, Math.max(0, elapsed + offset)));
               }}
               className="quiet-player-range min-w-0 flex-1"
-              style={{ '--player-progress': `${canSeek ? elapsed / duration * 100 : 0}%` } as React.CSSProperties}
+              style={{ '--player-progress': `${canSeek ? (displayTime / duration) * 100 : 0}%` } as React.CSSProperties}
             />
             <span className="min-w-[5ch]">{durationLabel}</span>
           </div>
@@ -235,7 +303,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
         <div className="col-span-2 flex min-w-0 items-center justify-end gap-2 md:col-span-1">
           <button
             type="button"
-            onClick={() => onVolumeChange(volume === 0 ? 0.8 : 0)}
+            onClick={onToggleMute ?? (() => onVolumeChange(volume === 0 ? 0.85 : 0))}
             aria-label={muteLabel}
             title={muteLabel}
             className={`transition-colors cursor-pointer ${
@@ -245,7 +313,7 @@ export const QuietPlayer: React.FC<QuietPlayerProps> = ({
             }`}
           >
             {volume === 0 ? (
-              <VolumeX className="w-4 h-4" />
+              <VolumeX className="w-4 h-4 text-red-400" />
             ) : (
               <Volume2 className="w-4 h-4" />
             )}
