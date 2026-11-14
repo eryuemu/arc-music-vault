@@ -253,8 +253,12 @@ html[data-vault-transition='stack-return']::view-transition-new(vault-cover) {
   82%, 100% { opacity: 1; }
 }
 
-.shelf-row {
+.shelf-deck {
   --book-width-scale: 0.95;
+  container-type: inline-size;
+}
+
+.shelf-row {
   justify-content: safe center;
 }
 
@@ -676,7 +680,7 @@ button.archive-control:hover {
   border-radius: 4px;
 }
 
-.shelf-drag-slot > [data-drag-surface] {
+.shelf-drag-slot [data-drag-surface] {
   opacity: 0;
 }
 

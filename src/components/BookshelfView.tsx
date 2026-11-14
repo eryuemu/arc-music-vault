@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Layers, Columns3, Sun, Moon, Search, X, GripVertical, ChevronLeft, ChevronRight, Play, ArrowUpDown, Check } from 'lucide-react';
 import { ThreeDimensionalBook } from './ThreeDimensionalBook';
 import { Album, ShelfDisplayMode, ThemeMode, Track } from '../types';
 import { useShelfDrag } from './useShelfDrag';
+import { useShelfSlide } from './useShelfSlide';
 import { matchesSearch, moveItem } from '../preferences';
 
 interface BookshelfViewProps {
@@ -51,6 +52,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
   const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
   const rowRef = useRef<HTMLDivElement>(null);
   const { active, handle } = useShelfDrag(onMoveAlbum);
+  const slideBooks = useShelfSlide();
   const searchInput = useRef<HTMLInputElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
   const query = search.trim().toLocaleLowerCase();
@@ -68,8 +70,8 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
     ? moveItem(results, results.findIndex(({ album }) => album.id === active.id),
       results.findIndex(({ album }) => album.id === active.target))
     : results;
-  const displayedAlbums = mode === 'stacked'
-    ? orderedResults.slice(stackPage * stackPageSize, (stackPage + 1) * stackPageSize) : orderedResults;
+  const albumsOnPage = (page: number) => orderedResults.slice(page * stackPageSize, (page + 1) * stackPageSize);
+  const displayedAlbums = mode === 'stacked' ? albumsOnPage(stackPage) : orderedResults;
   const toolbarButton = 'archive-control inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs sm:text-sm';
   const displayButton = (value: ShelfDisplayMode) =>
     `archive-control flex items-center gap-1.5 rounded px-2.5 py-1.5 aria-pressed:bg-[#c5a059]/15 ${displayMode === value ? 'font-semibold' : ''}`;
@@ -77,12 +79,8 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
   const updateScrollEdges = () => {
     const row = rowRef.current;
     if (!row) return;
-    const remaining = row.scrollWidth - row.clientWidth - row.scrollLeft;
-    const last = row.lastElementChild?.getBoundingClientRect();
-    const bounds = row.getBoundingClientRect();
-    const first = row.firstElementChild?.getBoundingClientRect();
-    const left = row.scrollLeft > 5 && !!first && first.left < bounds.left - 3;
-    const right = remaining > 5 && !!last && last.right > bounds.right + 3;
+    const left = row.scrollLeft > 5;
+    const right = row.scrollWidth - row.clientWidth - row.scrollLeft > 5;
     setScrollEdges((current) => current.left === left && current.right === right ? current : { left, right });
   };
 
@@ -122,6 +120,16 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
     const row = rowRef.current;
     row?.scrollBy({ left: direction * Math.max(180, row.clientWidth * 0.7),
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  };
+
+  const slideTo = (value: ShelfDisplayMode, page: number, update: () => void, direction?: -1 | 1) => {
+    const nextAlbums = value === 'stacked' ? albumsOnPage(page) : orderedResults;
+    slideBooks(rowRef.current, nextAlbums.map(({ album }) => album.id), !!reduceMotion, update, direction);
+  };
+
+  const changeDisplay = (value: ShelfDisplayMode, update: () => void) => {
+    if (mode === 'search' || (mode === value && (value === 'shelf' || stackPage === 0))) update();
+    else slideTo(value, 0, update, mode === 'stacked' && value === 'stacked' ? -1 : undefined);
   };
 
   const sortControls = (album: Album, index: number) => !canSort ? undefined : (
@@ -170,7 +178,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
                 isDark ? 'text-[#a2a4b3]' : 'text-[#6e7080]'
               }`}
             >
-              RESONANCE ARCHIVE // 离线视听典藏馆
+              RESONANCE ARCHIVE // 离线典藏馆
             </span>
             <span
               className={`hidden sm:inline-block text-xs font-mono ml-1 px-2 py-0.5 rounded-full border ${
@@ -187,7 +195,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
               isDark ? 'text-[#eae8e3]' : 'text-[#18191e]'
             }`}
           >
-            共鸣视听典藏馆
+            共鸣典藏馆
           </h1>
         </div>
 
@@ -259,8 +267,10 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
               type="button"
               aria-pressed={sorting}
               onClick={() => {
-                if (displayMode === 'stacked') onDisplayModeChange('shelf');
-                setSorting(!sorting);
+                changeDisplay('shelf', () => {
+                  if (displayMode === 'stacked') onDisplayModeChange('shelf');
+                  setSorting(!sorting);
+                });
               }}
               className={`flex items-center space-x-2 px-3 py-2 rounded-lg border text-sm transition-all cursor-pointer ${
                 sorting
@@ -301,7 +311,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
                 key={value}
                 type="button"
                 aria-pressed={displayMode === value}
-                onClick={() => {
+                onClick={() => changeDisplay(value, () => {
                   if (value === 'stacked') setSorting(false);
                   onStackPageChange(0);
                   setSearchLimit(searchPageSize);
@@ -310,7 +320,7 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
                     onSearchOpenChange(false);
                   }
                   onDisplayModeChange(value);
-                }}
+                })}
                 className={displayButton(value)}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />
@@ -355,12 +365,9 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
       )}
 
       {/* Main Exhibition Hall Stage (Books Centerpiece) */}
-        <motion.section key={mode} aria-label="典藏书架" data-shelf-mode={mode}
-          initial={reduceMotion ? false : { opacity: 0, y: mode === 'search' ? 10 : 18, scale: 0.992 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: reduceMotion ? 0 : 0.23, ease: [0.22, 0.72, 0.25, 1] }}
+        <section aria-label="典藏书架" data-shelf-mode={mode}
           className={`my-auto py-6 md:py-8 flex flex-col items-center justify-center relative ${
-          mode === 'shelf' ? 'lg:w-[min(93.5rem,calc(100vw-3rem))] lg:self-center' : mode === 'search' ? '!mt-0 w-full' : ''
+          mode === 'search' ? '!mt-0 w-full' : 'lg:w-[min(93.5rem,calc(100vw-3rem))] lg:self-center'
         }`}>
           {/* Soft overhead gallery spotlight gradient */}
           <div
@@ -372,7 +379,10 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
           />
 
           {mode === 'search' ? (
-            <div className="relative z-10 w-full">
+            <motion.div className="relative z-10 w-full"
+              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.23, ease: [0.22, 0.72, 0.25, 1] }}>
               {query && <p role="status" className="mb-3 text-sm opacity-75">找到 {results.length} 部藏品</p>}
               {results.length === 0 && <p className="py-8 text-center text-sm opacity-75">没有找到匹配的专辑或曲目。</p>}
               <ul className="space-y-2">
@@ -414,13 +424,13 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
                   显示更多藏品
                 </button>
               )}
-            </div>
+            </motion.div>
           ) : (
             <>
               <div ref={rowRef} data-shelf-scroll={mode === 'shelf' ? '' : undefined} onScroll={updateScrollEdges}
-                className={mode === 'shelf'
-                  ? 'shelf-row w-full flex items-end gap-6 sm:gap-10 lg:gap-14 px-4 pt-8 pb-2 z-10 overflow-x-auto no-scrollbar'
-                  : 'relative grid place-content-center w-full py-10 z-10'}
+                className={`shelf-deck relative isolate w-full px-4 pt-8 z-10 ${mode === 'shelf'
+                  ? 'shelf-row flex items-end gap-6 sm:gap-10 lg:gap-14 pb-2 overflow-x-auto no-scrollbar'
+                  : 'grid place-content-center pb-[4.25rem] overflow-x-clip'}`}
               >
                 {displayedAlbums.map(({ album }, index) => (
                   <ThreeDimensionalBook
@@ -437,15 +447,6 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
                   />
                 ))}
               </div>
-              {mode === 'stacked' && stackPageCount > 1 && (
-                <nav aria-label="画册叠放分页" className="relative z-20 flex items-center gap-3 text-xs">
-                  <button type="button" disabled={stackPage === 0} onClick={() => onStackPageChange(stackPage - 1)}
-                    className={`${toolbarButton} disabled:opacity-40`}>上一组</button>
-                  <span>{stackPage + 1} / {stackPageCount}</span>
-                  <button type="button" disabled={stackPage + 1 === stackPageCount} onClick={() => onStackPageChange(stackPage + 1)}
-                    className={`${toolbarButton} disabled:opacity-40`}>下一组</button>
-                </nav>
-              )}
               {mode === 'shelf' && ([[-1, scrollEdges.left, ChevronLeft], [1, scrollEdges.right, ChevronRight]] as const)
                 .map(([direction, visible, Icon]) => visible && (
                   <button key={direction} type="button" onClick={() => scrollShelf(direction)}
@@ -458,33 +459,58 @@ export const BookshelfView: React.FC<BookshelfViewProps> = ({
           )}
 
           {/* Solid Architectural Shelf Beam Plinth */}
-          {mode === 'shelf' && (
-            <div className="w-full max-w-5xl lg:max-w-[calc(100%-4rem)] relative mt-4">
-              <div
-                className={`w-full h-4 border-t border-b shadow-2xl flex items-center px-6 ${
-                  isDark
-                    ? 'bg-[#14151b] border-[#2a2c38] border-b-[#090a0d]'
-                    : 'bg-[#ded8cb] border-[#cfc8b8] border-b-[#b8b09d]'
-                }`}
-              >
+          {mode !== 'search' && (
+            <div className="w-full max-w-5xl lg:max-w-[calc(100%-4rem)] relative mt-4 h-[4.5rem]">
+              <div aria-hidden="true" className={`transition-[opacity,transform] duration-500 motion-reduce:transition-none ${
+                mode === 'shelf' ? 'opacity-100' : 'translate-y-2 opacity-0'
+              }`}>
                 <div
-                  className={`w-full h-[1px] ${
+                  className={`w-full h-4 border-t border-b shadow-2xl flex items-center px-6 ${
                     isDark
-                      ? 'bg-gradient-to-r from-transparent via-[#3a3d4d] to-transparent opacity-60'
-                      : 'bg-gradient-to-r from-transparent via-[#ffffff] to-transparent opacity-70'
+                      ? 'bg-[#14151b] border-[#2a2c38] border-b-[#090a0d]'
+                      : 'bg-[#ded8cb] border-[#cfc8b8] border-b-[#b8b09d]'
+                  }`}
+                >
+                  <div
+                    className={`w-full h-[1px] ${
+                      isDark
+                        ? 'bg-gradient-to-r from-transparent via-[#3a3d4d] to-transparent opacity-60'
+                        : 'bg-gradient-to-r from-transparent via-[#ffffff] to-transparent opacity-70'
+                    }`}
+                  />
+                </div>
+                <div
+                  className={`w-full h-14 bg-gradient-to-b ${
+                    isDark
+                      ? 'from-black/80 to-transparent'
+                      : 'from-black/15 to-transparent'
                   }`}
                 />
               </div>
-              <div
-                className={`w-full h-14 bg-gradient-to-b ${
-                  isDark
-                    ? 'from-black/80 to-transparent'
-                    : 'from-black/15 to-transparent'
-                }`}
-              />
+              {mode === 'stacked' && stackPageCount > 1 && (
+                <motion.nav aria-label="画册叠放分页"
+                  initial={reduceMotion ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.2 }}
+                  className="absolute inset-x-0 top-1 z-20 flex items-center justify-center gap-3 text-xs">
+                  {([-1, 1] as const).map((direction) => {
+                    const page = stackPage + direction;
+                    return (
+                      <React.Fragment key={direction}>
+                        {direction > 0 && <span>{stackPage + 1} / {stackPageCount}</span>}
+                        <button type="button" disabled={page < 0 || page >= stackPageCount}
+                          onClick={() => slideTo('stacked', page, () => onStackPageChange(page), direction)}
+                          className={`${toolbarButton} disabled:opacity-40`}>
+                          {direction < 0 ? '上一组' : '下一组'}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </motion.nav>
+              )}
             </div>
           )}
-        </motion.section>
+        </section>
 
       {/* Minimalist Footnote Specifications - ENLARGED */}
       <footer
